@@ -1,0 +1,103 @@
+Keep End User License Agreement
+
+Copyright (c) 2025-2026 Bogdan Novosad. All rights reserved.
+
+This agreement is between you and Bogdan Novosad (the "Licensor").
+It covers the Keep software product that this file accompanies (the
+"Software"), including the proprietary components compiled into Keep.
+Third-party components retain their own terms, listed in
+THIRD-PARTY-NOTICES.txt. If you install or use the Software, you accept
+this agreement.
+
+1. FREE LICENSE
+
+The Licensor grants you a free, non-exclusive, non-transferable license
+to use the Software:
+
+  a) for any non-commercial use;
+  b) for work on open-source projects;
+  c) for evaluation of the Software, including evaluation inside an
+     organization for up to 30 days.
+
+The free license has no time limit for non-commercial use and includes
+full functionality. It does not require a license key. You may connect
+multiple clients and devices that you control to your Keep server.
+
+2. COMMERCIAL LICENSE
+
+Commercial use is use of the Software in or for the work of a for-profit
+organization, beyond the evaluation described in section 1(c).
+Commercial use requires a valid paid license from the Licensor. The
+products, the number of people, and the term that a paid license covers
+are specified by the applicable order or plan. Plans are published at
+https://glidermcp.com.
+
+Early-availability period: until the Licensor offers paid plans for
+purchase at https://glidermcp.com, commercial use beyond the evaluation
+period is permitted free of charge under this agreement.
+
+3. PRIVACY
+
+Keep stores and processes document content and queries on the computer
+that runs the server. Keep does not send document content, queries,
+license data, usage telemetry, or crash reports to the Licensor.
+Lexical search works without network access. If you enable semantic
+search and its model is absent, Keep downloads pinned model files from
+the documented third-party model source. If you expose Keep through a
+proxy, you control that connection and its data.
+
+4. RESTRICTIONS
+
+You may not:
+
+  a) redistribute, sublicense, sell, or rent the Software;
+  b) offer the Software to third parties as a hosted or managed service;
+  c) remove or alter copyright or license notices;
+  d) reverse engineer, decompile, or disassemble the Software, except
+     to the extent that applicable law permits this despite this
+     limitation.
+
+Your license to use multiple clients and devices does not permit you to
+offer the Software as a service to another person or organization.
+
+5. TERMINATION
+
+This license terminates automatically if you breach this agreement.
+On termination you must stop using the Software. Sections 3, 6, 7,
+and 8 survive termination.
+
+6. DISCLAIMER OF WARRANTIES
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NON-INFRINGEMENT. THE LICENSOR MAKES NO REPRESENTATIONS OR WARRANTIES
+REGARDING THE ACCURACY, COMPLETENESS, OR SUITABILITY OF THE SOFTWARE
+FOR ANY PURPOSE.
+
+7. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL
+THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, CONSEQUENTIAL, PUNITIVE, OR OTHER DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) ARISING OUT OF OR IN
+ANY WAY CONNECTED WITH THE USE OF OR INABILITY TO USE THE SOFTWARE,
+EVEN IF THE LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGES. NOTHING IN THIS AGREEMENT EXCLUDES LIABILITY THAT CANNOT BE
+EXCLUDED UNDER APPLICABLE LAW.
+
+8. GOVERNING LAW
+
+This agreement is governed by the laws of Spain. The courts of Spain
+have jurisdiction over disputes that arise from this agreement. If you
+are a consumer, the mandatory consumer-protection rules of your country
+of residence remain unaffected.
+
+9. CHANGES TO THIS AGREEMENT
+
+The terms that apply to you are the terms distributed with the version
+of the Software that you use. New terms apply from the first version
+that ships with them.
+
+Contact: https://glidermcp.com
