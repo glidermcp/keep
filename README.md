@@ -26,6 +26,8 @@ See [the tool reference](tools.md) for request examples and revision rules.
 
 The default search mode is lexical and needs no model.
 Add `--semantic` to enable hybrid search.
+Use `--model-dir` with an absolute directory to choose where Keep stores its pinned model files.
+This option requires `--semantic`; the default shared model cache stays unchanged when you omit it.
 The first enabled start can download about 86 MiB from the pinned model source.
 Your MCP agent can report whether the model and index are ready.
 Keep sends no document content or query to GliderMCP.
