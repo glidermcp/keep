@@ -49,6 +49,16 @@ Keep has no account system in this alpha.
 If a reverse proxy exposes Keep, its operator configures HTTPS and forwards the Bearer header.
 Keep itself still binds only to loopback.
 
+An operator enables hybrid retrieval with `--semantic` on stdio or HTTP.
+The optional `--model-dir <absolute-directory>` selects the directory containing the pinned model files.
+It holds `config.json`, `tokenizer.json`, and `model.safetensors` directly. Keep adds no model-name subdirectory.
+It requires `--semantic` in document mode. Relative paths and filesystem roots are rejected.
+Keep downloads missing files and verifies their pinned checksums in that directory.
+It does not fall back to the default cache when the selected directory fails.
+Without this option, Keep retains the shared per-user model cache.
+The default Windows model cache uses the operating system profile, independently of the document-store `USERPROFILE` setting.
+Lexical search and exact document operations remain available when the model fails.
+
 The operator stops Keep before a copy, export, import, or restore operation.
 Keep refuses an unsupported internal layout and leaves its files in place.
 Keep never deletes the store when you remove the executable.
