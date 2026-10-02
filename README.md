@@ -10,6 +10,7 @@ Check the archive hash before you extract it.
 On Linux, run `sha256sum <archive>` and compare the result with that archive's line in `SHA256SUMS`.
 On macOS, `shasum -a 256 <archive>` gives a hash that you can compare with `SHA256SUMS`.
 On Windows, run `Get-FileHash <archive> -Algorithm SHA256` in PowerShell and compare the result.
+On Windows, install the latest [Microsoft Visual C++ v14 Redistributable for x64](https://aka.ms/vc14/vc_redist.x64.exe) before you run `keep.exe`.
 Move `keep` or `keep.exe` to a directory on `PATH`, then run `keep --version`.
 
 Configure an MCP client to start `keep` with stdio and no arguments.
