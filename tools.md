@@ -33,6 +33,11 @@ For an update, the caller reads the current revision and passes it as `ifRevisio
 Keep rejects a stale revision so another writer's change survives.
 If a write response is lost, the caller repeats the same payload with the same `requestId`.
 
+To archive a document, the caller first reads it with `get_document`.
+The caller preserves all mutable fields and replaces the document through `put_document` with `status: "archived"`.
+The request uses the current revision as `ifRevision` and a fresh UUID `requestId`.
+An omitted mutable field becomes its default. Use `status: "active"` to restore ordinary visibility.
+
 For example, the caller creates a `recipes` collection with `title: "Recipes"`.
 It creates a document with key `lentil-soup` and title `Lentil soup`.
 It puts the recipe text in `body` and uses `search` with query `lentil` to find it.
