@@ -5,6 +5,10 @@ An MCP client starts Keep as a stdio server when it runs `keep` without argument
 The client uses the absolute path of the installed executable and no arguments for the personal store.
 The server uses `~/.glider/keep` on Linux, macOS, and Windows.
 One process owns the store at a time.
+Keep exposes only document tools. It rejects the removed `--root` option before it creates state.
+Use no arguments for the personal store, or `--data-dir <directory>` for another document store.
+Keep refuses a selected directory containing `knowledge.db` or its recovery files, including during offline export and import.
+It preserves those files and supplies no conversion or automatic import.
 
 The caller uses `describe` to get the current limits and supported tools.
 The caller uses `list_spaces` to get the persistent Personal space ID.
