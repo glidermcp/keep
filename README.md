@@ -23,7 +23,7 @@ They share the same document store.
 Requires Node.js 24 or later for npm.
 Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
 Enable npm optional dependencies.
-See the [release notes](https://github.com/glidermcp/keep/releases/tag/keep-v0.1.0-alpha.1) for Windows alpha.1 prerequisites.
+Windows alpha.2 includes the required Microsoft Visual C++ runtime.
 
 Installation and token commands:
 
