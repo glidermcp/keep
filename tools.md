@@ -1,6 +1,77 @@
 # Keep tool reference
 
 This technical reference is for MCP agents and client integrators.
+
+## Setup
+
+Run one Keep server on your computer.
+Connect all agents and sessions to it over HTTP.
+They share the same document store.
+
+Requires Node.js 24 or later for npm.
+Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
+Enable npm optional dependencies.
+Windows alpha.2 includes the required Microsoft Visual C++ runtime.
+
+Installation and token commands:
+
+```sh
+npm install --global @glidermcp/keep@next
+keep --generate-token
+```
+
+The `next` tag selects the alpha release.
+Save the generated token securely. Use it for the server and every client, including after a restart.
+Replace `<token>` below with that value.
+
+Start the server on macOS or Linux:
+
+```sh
+KEEP_HTTP_TOKEN="<token>" keep --transport http
+```
+
+Or in Windows PowerShell:
+
+```powershell
+$env:KEEP_HTTP_TOKEN = "<token>"
+keep --transport http
+```
+
+Leave this process active while clients use it.
+Each client connects to `http://127.0.0.1:7340/mcp` with the header `Authorization: Bearer <token>`.
+The token grants full access to the shared store.
+
+For clients that accept `mcpServers` JSON with `url` and `headers`:
+
+```json
+{
+  "mcpServers": {
+    "keep": {
+      "url": "http://127.0.0.1:7340/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+```
+
+Use the client's secret storage for the token when available.
+The address is local to this computer.
+Stdio is also available: configure a client to start `keep` without arguments.
+
+### Native executable
+
+Download the archive for your system and `SHA256SUMS` from [GitHub Releases](https://github.com/glidermcp/keep/releases).
+Verify its SHA-256 checksum.
+Extract the archive.
+Put `keep` or `keep.exe` on `PATH`.
+Then follow the HTTP setup above.
+The native executable runs without Node.js.
+
+
+## Document API
+
 An MCP client starts Keep as a stdio server when it runs `keep` without arguments.
 The client uses the absolute path of the installed executable and no arguments for the personal store.
 The server uses `~/.glider/keep` on Linux, macOS, and Windows.
