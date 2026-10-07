@@ -1,0 +1,72 @@
+name: Publish Keep Docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Approved Keep alpha version
+        required: true
+        default: 0.1.0-alpha.3
+        type: string
+      mode:
+        description: Publish a new version or verify a public version
+        required: true
+        default: publish
+        type: choice
+        options: [publish, verify]
+      tag_next:
+        description: Point next at this verified image
+        default: true
+        type: boolean
+      bootstrap:
+        description: Create the first package after an authenticated absence check
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: keep-docker-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'glidermcp/keep' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: Test release validation
+        run: python docker/test_distribution.py
+      - name: Authenticate the package publisher
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_ACTOR" --password-stdin
+      - name: Assemble, probe, and publish
+        env:
+          KEEP_VERSION: ${{ inputs.version }}
+          KEEP_MODE: ${{ inputs.mode }}
+          TAG_NEXT: ${{ inputs.tag_next }}
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          args=(--version "$KEEP_VERSION" --mode "$KEEP_MODE" --evidence evidence)
+          if [ "$TAG_NEXT" = true ]; then args+=(--tag-next); fi
+          if [ "$BOOTSTRAP" = true ]; then args+=(--bootstrap); fi
+          python docker/publish.py "${args[@]}"
+      - name: Preserve image evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: keep-docker-evidence
+          path: evidence/
+          if-no-files-found: warn
+      - name: End registry session
+        if: always()
+        run: docker logout ghcr.io

@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!native/
+!native/**
+!entrypoint.sh
+!healthcheck.sh
+!token.sh

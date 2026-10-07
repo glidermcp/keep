@@ -1,0 +1,23 @@
+{
+    email {$ACME_EMAIL}
+    admin off
+    auto_https disable_redirects
+    https_port 8443
+}
+
+https://{$KEEP_DOMAIN} {
+    bind 127.0.0.1
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        resolvers 1.1.1.1 1.0.0.1
+    }
+    handle /mcp {
+        reverse_proxy keep:7340 {
+            header_up Host {$KEEP_DOMAIN}
+            flush_interval -1
+        }
+    }
+    handle {
+        respond 404
+    }
+}

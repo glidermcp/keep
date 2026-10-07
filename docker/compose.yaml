@@ -1,0 +1,27 @@
+name: keep
+services:
+  keep:
+    image: ${KEEP_IMAGE:-ghcr.io/glidermcp/keep:0.1.0-alpha.3}
+    platform: linux/amd64
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 60s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - 127.0.0.1:7340:7340
+    environment:
+      KEEP_HTTP_TOKEN_FILE: /run/secrets/keep_http_token
+    secrets:
+      - keep_http_token
+    volumes:
+      - keep_data:/data
+      - keep_models:/models
+volumes:
+  keep_data:
+  keep_models:
+secrets:
+  keep_http_token:
+    file: ./secrets/keep_http_token

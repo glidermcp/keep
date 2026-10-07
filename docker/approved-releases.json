@@ -1,0 +1,9 @@
+{
+  "0.1.0-alpha.3": {
+    "manifestSha256": "95e75d4f9bce6f7afff201cdf101c8e42a377a7b01fc1cf8c54bf4c2dc9f6d3c",
+    "archiveSha256": "8214b0db1397b0a45d2a5945dff99a97a4f9ddcc2ce2a740247dedb64f9053ae",
+    "binarySha256": "fcdf0fa85833100a5abe31497536078037b70ce04b1f9cb03742fff2acfa6bd1",
+    "licenseSha256": "d6f4d11b5bad7d810016f1ca70dac6f02796f5c68664cc1b10161874c8a6967a",
+    "noticesSha256": "c9d73fb93335fe6aa5efd6af080e2e3bbc53efeea137f07d2b0885167d45406b"
+  }
+}

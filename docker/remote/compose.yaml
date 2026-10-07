@@ -1,0 +1,76 @@
+name: keep-remote
+services:
+  keep:
+    image: ${KEEP_IMAGE:-ghcr.io/glidermcp/keep:0.1.0-alpha.3}
+    platform: linux/amd64
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 60s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    command:
+      - --transport
+      - http
+      - --bind-address
+      - 0.0.0.0
+      - --port
+      - '7340'
+      - --data-dir
+      - /data/documents
+      - --public-url
+      - https://${KEEP_DOMAIN:?Set KEEP_DOMAIN}/mcp
+    environment:
+      KEEP_HTTP_TOKEN_FILE: /run/secrets/keep_http_token
+    secrets:
+      - keep_http_token
+    volumes:
+      - keep_data:/data
+      - keep_models:/models
+  tailscale:
+    image: tailscale/tailscale:v1.104.1
+    restart: unless-stopped
+    environment:
+      TS_HOSTNAME: ${TS_HOSTNAME:-keep}
+      TS_USERSPACE: 'true'
+      TS_AUTH_ONCE: 'true'
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+  caddy:
+    build:
+      context: ./caddy
+    restart: unless-stopped
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_started
+      keep:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      KEEP_DOMAIN: ${KEEP_DOMAIN:?Set KEEP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    secrets:
+      - cloudflare_api_token
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+volumes:
+  keep_data:
+  keep_models:
+  tailscale_state:
+  caddy_data:
+  caddy_config:
+secrets:
+  keep_http_token:
+    file: ../secrets/keep_http_token
+  cloudflare_api_token:
+    file: ../secrets/cloudflare_api_token

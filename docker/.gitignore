@@ -1,0 +1,8 @@
+.env
+secrets/
+backups/
+*.tar.gz
+*.partial-*
+build-context/
+evidence/
+__pycache__/
