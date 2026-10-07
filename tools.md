@@ -10,8 +10,9 @@ They share the same document store.
 
 Requires Node.js 24 or later for npm.
 Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
+Linux 0.1.0-alpha.3 requires glibc 2.39 or later, such as Ubuntu 24.04.
 Enable npm optional dependencies.
-Windows alpha.2 includes the required Microsoft Visual C++ runtime.
+Windows 0.1.0-alpha.2 and later include the required Microsoft Visual C++ runtime.
 
 Installation and token commands:
 
@@ -59,6 +60,41 @@ For clients that accept `mcpServers` JSON with `url` and `headers`:
 Use the client's secret storage for the token when available.
 The address is local to this computer.
 Stdio is also available: configure a client to start `keep` without arguments.
+
+### HTTP address, port, and proxy
+
+Select another local port with `keep --transport http --port 8080`.
+Connect clients to `http://127.0.0.1:8080/mcp`. The default port is 7340; `--port 0` selects an available port.
+Keep reports the actual port on stderr after startup.
+
+An HTTPS proxy uses `--public-url https://keep.example.com/mcp` and forwards the client's Bearer header.
+The URL must use HTTPS and the exact `/mcp` path, without credentials, queries, fragments, or wildcard hosts.
+Keep accepts that public Host authority or the exact local authority. It rejects every browser Origin header.
+Keep has no account system in this alpha.
+
+`--bind-address` requires Keep 0.1.0-alpha.3 or later.
+Keep defaults to `127.0.0.1`. Select another listener address and port with:
+
+```sh
+keep --transport http --bind-address 0.0.0.0 --port 8080
+```
+
+Set `KEEP_HTTP_TOKEN` before startup, as shown above.
+The address must be a literal IPv4 or IPv6 value, without brackets, a port, or a zone identifier.
+The option requires explicit HTTP transport. Stdio, token generation, and offline file commands reject it.
+
+The listener address does not allow arbitrary Host headers.
+A concrete address accepts its exact IP and actual bound port as the local authority.
+`0.0.0.0` accepts `127.0.0.1:<bound port>`; `::` accepts `[::1]:<bound port>`.
+IPv6 authorities use brackets. A local Host can omit its port only when the actual port is 80.
+The configured HTTPS public authority remains accepted; its Host can omit port 443.
+
+For a container with the example above, Docker's `-p 127.0.0.1:8080:8080` option preserves the expected Host authority.
+The host client uses `http://127.0.0.1:8080/mcp`. This fragment specifies a port mapping, not a Keep image or complete deployment.
+A different host port requires a proxy that preserves the configured HTTPS authority or rewrites Host to the accepted local authority.
+A proxy in another container can use the container network with the same Host rules.
+Keep serves plain HTTP. Restrict network access and use an external HTTPS proxy for remote clients.
+The token remains required for every listener address.
 
 ### Native executable
 
@@ -119,15 +155,8 @@ An operator uses `keep export --output <file>` for a complete file backup while 
 An operator runs `keep import --input <file> --validate` before an import into another current store.
 The file command help gives the required digest and revision values for an import.
 
-An operator can also start local HTTP with `keep --transport http`.
-It binds to `127.0.0.1:7340` by default.
-An operator generates a private value with `keep --generate-token`.
-The operator sets `KEEP_HTTP_TOKEN` before starting the HTTP server.
-The client sends `Authorization: Bearer <token>` with each MCP request.
-The token gives full access to the selected store.
-Keep has no account system in this alpha.
-If a reverse proxy exposes Keep, its operator configures HTTPS and forwards the Bearer header.
-Keep itself still binds only to loopback.
+An operator can instead use [HTTP setup](#setup) to share one server across clients.
+The [HTTP address reference](#http-address-port-and-proxy) describes custom ports, proxies, and listener addresses.
 
 An operator enables hybrid retrieval with `--semantic` on stdio or HTTP.
 The optional `--model-dir <absolute-directory>` selects the directory containing the pinned model files.

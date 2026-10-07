@@ -15,7 +15,9 @@ npm install --global @glidermcp/keep@next
 ```
 
 The `next` tag selects the alpha. Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
-Windows alpha.2 includes the required Microsoft Visual C++ runtime; alpha.1 has separate prerequisites in its [release notes](https://github.com/glidermcp/keep/releases/tag/keep-v0.1.0-alpha.1).
+Linux 0.1.0-alpha.3 requires glibc 2.39 or later, such as Ubuntu 24.04.
+Windows 0.1.0-alpha.2 and later include the required Microsoft Visual C++ runtime.
+Alpha.1 has separate prerequisites in its [release notes](https://github.com/glidermcp/keep/releases/tag/keep-v0.1.0-alpha.1).
 Follow [HTTP setup and native installation](https://github.com/glidermcp/keep/blob/main/tools.md#setup) to create a token and connect clients.
 Store the token securely. It grants full access to the store; do not share it in chat or commit it.
 
