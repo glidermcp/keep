@@ -1,97 +1,47 @@
 # Keep
 
-**Shared memory for your AI agents.**
-
-Keep is a local MCP server where agents save, organize, and find information.
-Share knowledge across agents, conversations, and projects — with everything stored on your computer.
-
-## Features
-
-- Collections of text and JSON documents, with optional schemas and validation.
-- Filters, custom sort order, saved views, and numeric aggregates.
-- Full-text search and optional semantic search with a local model.
-- Document history and revision checks that reject stale updates.
-- Export and import for backups and transfers.
-- Stdio for a single client, or token-protected HTTP for multiple clients.
+Shared memory for your agents, stored on your computer.
+Keep lets agents save, organize, and find documents across conversations and projects.
 
 ## Setup
 
-Run one Keep server on your computer.
-Connect all agents and sessions to it over HTTP.
-They share the same document store.
+Keep is an alpha. Run one server and connect your clients to its token-protected HTTP endpoint.
+All clients share the same store. Only one process can open that store at a time.
 
-Requires Node.js 24 or later for npm.
-Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
-Enable npm optional dependencies.
-Windows alpha.2 includes the required Microsoft Visual C++ runtime.
-
-Installation and token commands:
+For npm, install Node.js 24 or later and keep optional dependencies enabled:
 
 ```sh
 npm install --global @glidermcp/keep@next
-keep --generate-token
 ```
 
-The `next` tag selects the alpha release.
-Save the generated token securely. Use it for the server and every client, including after a restart.
-Replace `<token>` below with that value.
+The `next` tag selects the alpha. Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
+Windows alpha.2 includes the required Microsoft Visual C++ runtime; alpha.1 has separate prerequisites in its [release notes](https://github.com/glidermcp/keep/releases/tag/keep-v0.1.0-alpha.1).
+Follow [HTTP setup and native installation](https://github.com/glidermcp/keep/blob/main/tools.md#setup) to create a token and connect clients.
+Store the token securely. It grants full access to the store; do not share it in chat or commit it.
 
-Start the server on macOS or Linux:
+Install the [Keep skill](https://github.com/glidermcp/glidermcp/tree/main/plugins/keep) after your connection works.
+This skill-only plugin starts no server and adds no MCP registration. It uses your existing connection.
 
-```sh
-KEEP_HTTP_TOKEN="<token>" keep --transport http
-```
+## What you can do
 
-Or in Windows PowerShell:
+- Keep project decisions and reusable notes available across sessions.
+- Organize text and JSON documents into collections, with optional schemas.
+- Find records with filters, full-text search, and optional local semantic search.
+- Inspect document history and update records with revision checks.
 
-```powershell
-$env:KEEP_HTTP_TOKEN = "<token>"
-keep --transport http
-```
+Ask your agent: “Find the deployment decision for this project and explain its source and date.”
+For an update: “Save this agreed decision in the existing project collection, preserving other fields.”
 
-Leave this process active while clients use it.
-Each client connects to `http://127.0.0.1:7340/mcp` with the header `Authorization: Bearer <token>`.
-The token grants full access to the shared store.
+## Storage and updates
 
-For clients that accept `mcpServers` JSON with `url` and `headers`:
+The default store is `~/.glider/keep`, independent of any project or conversation.
+A different store uses `--data-dir`. Do not start another server for each agent or working directory.
+Document content and queries stay on the server. Your MCP client controls what returned content reaches its model provider.
+Full-text search needs no model. Optional semantic search can download about 86 MiB at first use.
 
-```json
-{
-  "mcpServers": {
-    "keep": {
-      "url": "http://127.0.0.1:7340/mcp",
-      "headers": {
-        "Authorization": "Bearer <token>"
-      }
-    }
-  }
-}
-```
+Stop the shared server before updating its executable or copying, exporting, importing, or restoring its store.
+Update through the same installation channel, then restart with the same data directory and token.
+Keep retains documents when you uninstall the executable.
+See the [tool and backup reference](https://github.com/glidermcp/keep/blob/main/tools.md) before a transfer or restore.
 
-Use the client's secret storage for the token when available.
-The address is local to this computer.
-Stdio is also available: configure a client to start `keep` without arguments.
-
-### Native executable
-
-Download the archive for your system and `SHA256SUMS` from [GitHub Releases](https://github.com/glidermcp/keep/releases).
-Verify its SHA-256 checksum.
-Extract the archive.
-Put `keep` or `keep.exe` on `PATH`.
-Then follow the HTTP setup above.
-The native executable runs without Node.js.
-
-## Storage and search
-
-Documents stay on disk in `~/.glider/keep`, independently of any project or conversation.
-Use `--data-dir <directory>` to select another store. Only one Keep process can open a store at a time.
-
-Full-text search works without a model.
-Add `--semantic` to enable local hybrid search; the first start can download about 86 MiB.
-Document content and search queries stay on the server.
-
-Stop Keep before you copy the store or run `keep export --output <file>` for a backup.
-Keep also supports imports into another store. The documents stay on disk after you uninstall Keep.
-
-See the [tool reference](tools.md) for the API, HTTP configuration, model options, and backup procedures.
-Report problems in [GitHub Issues](https://github.com/glidermcp/keep/issues).
+[Report a problem](https://github.com/glidermcp/keep/issues). Product terms are in the package LICENSE file.
