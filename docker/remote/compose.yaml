@@ -29,7 +29,7 @@ services:
       - keep_data:/data
       - keep_models:/models
   tailscale:
-    image: tailscale/tailscale:v1.104.1
+    image: tailscale/tailscale:v1.102.5@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065
     restart: unless-stopped
     environment:
       TS_HOSTNAME: ${TS_HOSTNAME:-keep}
