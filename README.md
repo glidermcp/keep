@@ -8,6 +8,11 @@ Keep lets agents save, organize, and find documents across conversations and pro
 Keep is an alpha. Run one server and connect your clients to its token-protected HTTP endpoint.
 All clients share the same store. Only one process can open that store at a time.
 
+For Docker on an x64 computer, follow [Install with Docker](https://glidermcp.com/keep/installation).
+The [Docker Hub image](https://hub.docker.com/r/sacrorum/keep) includes its Linux runtime.
+The Compose files provide persistent storage, a token file, and automatic restart.
+Use the [private-domain guide](https://glidermcp.com/keep/setup) for HTTPS access through Tailscale and Cloudflare DNS.
+
 For npm, install Node.js 24 or later and keep optional dependencies enabled:
 
 ```sh

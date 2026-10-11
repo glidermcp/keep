@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Integrity and recovery regression checks that need no Docker daemon."""
 
+import argparse
 import io
 import json
 from pathlib import Path
-import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -101,27 +101,121 @@ class DistributionTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "checksum"):
                 prepare.verify_assets(self.version, self.directory, record)
 
-    def test_version_guard_fails_closed_for_auth_and_network_errors(self):
-        for code, stderr, allowed in [(0, b"", False), (1, b"manifest unknown", True),
-                                      (1, b"unauthorized", False), (1, b"timeout", False)]:
-            result = subprocess.CompletedProcess([], code, "", stderr.decode())
-            with patch.object(publish.subprocess, "run", return_value=result):
-                if allowed:
-                    publish.require_absent("image:version")
-                else:
-                    with self.assertRaises(ValueError):
-                        publish.require_absent("image:version")
+    def test_image_tag_requires_matching_version_and_container_revision(self):
+        for tag in [self.version + "-ubuntu26.04", self.version + "-ubuntu26.04-r2"]:
+            publish.validate_image_tag(self.version, tag)
+        for tag in ["latest", "next", self.version, "0.1.0-alpha.1-ubuntu26.04",
+                    self.version + "-../escape", self.version + "-ubuntu:26.04", self.version + "-" + "a" * 128]:
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                publish.validate_image_tag(self.version, tag)
 
-    def test_bootstrap_requires_authenticated_absence(self):
-        for status, allowed in [(404, True), (403, False), (401, False), (500, False)]:
-            error = urllib.error.HTTPError("url", status, "error", {}, None)
-            with patch.dict(publish.os.environ, {"GITHUB_REPOSITORY": "glidermcp/keep", "GH_TOKEN": "synthetic"}), \
-                    patch.object(publish.urllib.request, "urlopen", side_effect=error):
+    def test_version_guard_requires_structured_missing_manifest(self):
+        for status, code, allowed in [(404, "MANIFEST_UNKNOWN", True), (404, "NAME_UNKNOWN", False),
+                                      (403, "DENIED", False), (401, "UNAUTHORIZED", False),
+                                      (429, "TOOMANYREQUESTS", False), (500, "UNKNOWN", False)]:
+            body = io.BytesIO(json.dumps({"errors": [{"code": code}]}).encode())
+            error = urllib.error.HTTPError("url", status, "error", {}, body)
+            token = io.BytesIO(b'{"token":"synthetic-pull-token"}')
+            with self.subTest(status=status, code=code), \
+                    patch.object(publish.urllib.request, "urlopen", side_effect=[token, error]):
                 if allowed:
-                    publish.require_absent("image:version", True)
+                    publish.require_absent(self.version + "-ubuntu26.04")
                 else:
                     with self.assertRaises(ValueError):
-                        publish.require_absent("image:version", True)
+                        publish.require_absent(self.version + "-ubuntu26.04")
+
+    def test_version_guard_rejects_existing_image_and_network_failures(self):
+        for response in [io.BytesIO(b'{"schemaVersion":2}'), urllib.error.URLError("network unavailable")]:
+            token = io.BytesIO(b'{"token":"synthetic-pull-token"}')
+            with patch.object(publish.urllib.request, "urlopen", side_effect=[token, response]), \
+                    self.assertRaises((ValueError, urllib.error.URLError)):
+                publish.require_absent(self.version + "-ubuntu26.04")
+        with patch.object(publish.urllib.request, "urlopen", side_effect=urllib.error.URLError("auth unavailable")), \
+                self.assertRaises(urllib.error.URLError):
+            publish.require_absent(self.version + "-ubuntu26.04")
+
+    def test_version_guard_rejects_invalid_token_and_error_responses(self):
+        for token_payload in [b'{}', b'{"token":1}', b'{"token":""}']:
+            with patch.object(publish.urllib.request, "urlopen", return_value=io.BytesIO(token_payload)), \
+                    self.assertRaises(ValueError):
+                publish.require_absent(self.version + "-ubuntu26.04")
+        for body in [b'{}', b'not json', b'{"errors":[]}',
+                     b'{"errors":[{"code":"MANIFEST_UNKNOWN"},{"code":"DENIED"}]}']:
+            token = io.BytesIO(b'{"token":"synthetic-pull-token"}')
+            error = urllib.error.HTTPError("url", 404, "error", {}, io.BytesIO(body))
+            with patch.object(publish.urllib.request, "urlopen", side_effect=[token, error]), \
+                    self.assertRaises(ValueError):
+                publish.require_absent(self.version + "-ubuntu26.04")
+
+    def publish_args(self, mode="verify", tag_next=True):
+        return argparse.Namespace(version=self.version, image_tag=self.version + "-ubuntu26.04",
+                                  mode=mode, tag_next=tag_next, assets=None, evidence=self.directory / "evidence")
+
+    def test_verify_existing_image_probes_anonymous_digest_before_next(self):
+        digest = "sha256:" + "a" * 64
+        events = []
+
+        def command(*args, **kwargs):
+            events.append(args)
+            return ""
+
+        def anonymous_pull(tag):
+            events.append(("anonymous", tag))
+            return digest
+
+        with patch.object(publish, "approved", return_value=self.record), \
+                patch.object(publish, "require_absent") as absent, patch.object(publish, "prepare") as prepare_context, \
+                patch.object(publish, "command", side_effect=command), \
+                patch.object(publish, "anonymous_pull", side_effect=anonymous_pull), \
+                patch.object(publish, "push") as pushes:
+            publish.publish(self.publish_args())
+        absent.assert_not_called()
+        prepare_context.assert_not_called()
+        pushes.assert_not_called()
+        self.assertEqual(events[0], ("anonymous", f"{publish.IMAGE}:{self.version}-ubuntu26.04"))
+        self.assertIn("smoke.py", events[1][1])
+        self.assertEqual(events[1][3], f"{publish.IMAGE}@{digest}")
+        self.assertEqual(events[2], ("docker", "buildx", "imagetools", "create", "--prefer-index=false",
+                                     "--tag", f"{publish.IMAGE}:next", f"{publish.IMAGE}@{digest}"))
+        report = json.loads((self.directory / "evidence/image.json").read_text())
+        self.assertTrue(report["anonymousPull"] and report["next"])
+
+    def test_failed_anonymous_probe_does_not_promote_next(self):
+        with patch.object(publish, "approved", return_value=self.record), \
+                patch.object(publish, "anonymous_pull", return_value="sha256:" + "a" * 64), \
+                patch.object(publish, "command", side_effect=RuntimeError("probe failed")), \
+                patch.object(publish, "push") as push_image, self.assertRaisesRegex(RuntimeError, "probe failed"):
+            publish.publish(self.publish_args())
+        push_image.assert_not_called()
+        report = json.loads((self.directory / "evidence/image.json").read_text())
+        self.assertFalse(report["anonymousPull"] or report["next"])
+
+    def test_next_promotion_requires_original_registry_digest(self):
+        with patch.object(publish, "approved", return_value=self.record), \
+                patch.object(publish, "anonymous_pull", side_effect=["sha256:" + "a" * 64, "sha256:" + "b" * 64]), \
+                patch.object(publish, "command"), self.assertRaisesRegex(ValueError, "another image digest"):
+            publish.publish(self.publish_args())
+        report = json.loads((self.directory / "evidence/image.json").read_text())
+        self.assertTrue(report["anonymousPull"])
+        self.assertFalse(report["next"])
+
+    def test_publish_rechecks_absence_before_push(self):
+        with patch.object(publish, "approved", return_value=self.record), \
+                patch.object(publish, "require_absent", side_effect=[None, ValueError("tag now exists")]), \
+                patch.object(publish, "prepare"), patch.object(publish, "command") as commands, \
+                patch.object(publish, "push") as push_image, self.assertRaisesRegex(ValueError, "tag now exists"):
+            publish.publish(self.publish_args(mode="publish"))
+        self.assertEqual(commands.call_args_list[0].args[:2], ("docker", "build"))
+        push_image.assert_not_called()
+
+    def test_publish_rejects_anonymous_digest_mismatch_before_next(self):
+        with patch.object(publish, "approved", return_value=self.record), \
+                patch.object(publish, "require_absent"), patch.object(publish, "prepare"), \
+                patch.object(publish, "command"), patch.object(publish, "push", return_value="sha256:" + "a" * 64) as pushes, \
+                patch.object(publish, "anonymous_pull", return_value="sha256:" + "b" * 64), \
+                self.assertRaisesRegex(ValueError, "another image digest"):
+            publish.publish(self.publish_args(mode="publish"))
+        pushes.assert_called_once_with(f"{publish.IMAGE}:{self.version}-ubuntu26.04")
 
     def test_restore_rejects_links_traversal_and_missing_store(self):
         for name, kind in [("../documents", tarfile.DIRTYPE), ("/documents", tarfile.DIRTYPE),

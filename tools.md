@@ -8,6 +8,9 @@ Run one Keep server on your computer.
 Connect all agents and sessions to it over HTTP.
 They share the same document store.
 
+For a persistent Docker service, use the [installation guide](https://glidermcp.com/keep/installation).
+The steps below install the executable through npm or a native archive.
+
 Requires Node.js 24 or later for npm.
 Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
 Linux 0.1.0-alpha.3 requires glibc 2.39 or later, such as Ubuntu 24.04.
@@ -89,8 +92,9 @@ A concrete address accepts its exact IP and actual bound port as the local autho
 IPv6 authorities use brackets. A local Host can omit its port only when the actual port is 80.
 The configured HTTPS public authority remains accepted; its Host can omit port 443.
 
-For a container with the example above, Docker's `-p 127.0.0.1:8080:8080` option preserves the expected Host authority.
-The host client uses `http://127.0.0.1:8080/mcp`. This fragment specifies a port mapping, not a Keep image or complete deployment.
+The [Docker guide](https://github.com/glidermcp/keep/tree/main/docker) supplies the image, Compose files, and backup procedure.
+For the custom port above, Docker's `-p 127.0.0.1:8080:8080` mapping preserves the expected Host authority.
+The host client uses `http://127.0.0.1:8080/mcp`.
 A different host port requires a proxy that preserves the configured HTTPS authority or rewrites Host to the accepted local authority.
 A proxy in another container can use the container network with the same Host rules.
 Keep serves plain HTTP. Restrict network access and use an external HTTPS proxy for remote clients.
