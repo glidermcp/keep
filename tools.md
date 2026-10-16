@@ -4,6 +4,15 @@ This technical reference is for MCP agents and client integrators.
 
 ## Setup
 
+Stop Keep before the first store access with 0.1.0-alpha.4.
+Back up the complete store directory before you proceed.
+Keep atomically upgrades schema 5 to schema 6 and preserves all content and IDs in Default.
+Default retains the previous space ID. Version 0.1.0-alpha.3 cannot open schema 6.
+
+To roll back, stop Keep.
+Restore the backup that you created before the upgrade.
+Then use the previous executable. That executable alone cannot reverse the upgrade.
+
 Run one Keep server on your computer.
 Connect all agents and sessions to it over HTTP.
 They share the same document store.
@@ -13,7 +22,7 @@ The steps below install the executable through npm or a native archive.
 
 Requires Node.js 24 or later for npm.
 Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
-Linux 0.1.0-alpha.3 requires glibc 2.39 or later, such as Ubuntu 24.04.
+Linux 0.1.0-alpha.3 and later require glibc 2.39 or later, such as Ubuntu 24.04.
 Enable npm optional dependencies.
 Windows 0.1.0-alpha.2 and later include the required Microsoft Visual C++ runtime.
 
@@ -110,6 +119,63 @@ Then follow the HTTP setup above.
 The native executable runs without Node.js.
 
 
+## Workspaces
+
+Keep 0.1.0-alpha.4 uses contract `1.0-draft.k5.2` with workspaces and workspace deletion. Version 0.1.0-alpha.3 has one Personal space.
+Check `describe` and the installed schemas before using these tools or options.
+Workspaces use the existing `spaceId` argument. They organize collections; all workspaces share the owner's full-access token.
+
+The caller selects the intended workspace through `list_spaces`. Use `isDefault` to identify the default, rather than list position.
+`get_space` reads workspace metadata, its revision, and the content snapshotRevision together.
+`put_space` creates or replaces metadata through a stable key, definition, ifRevision, and UUID requestId.
+The definition requires title and accepts an IANA defaultTimeZone. An omitted defaultTimeZone becomes `UTC`, including on replacement.
+
+Use `ifRevision: "absent"` to create, or the current revision to replace. Repeat the same request and requestId after an ambiguous response.
+
+There is no collection move or default-workspace selection operation.
+
+For authorized deletion, inspect the workspace and read `get_space` for both current revisions.
+Call `delete_space` with spaceId, ifRevision, ifSnapshotRevision, and a fresh UUID requestId.
+Default remains protected by identity after a title change or import; deletion returns default_space_protected.
+Cascade defaults to false. Any collection, including an empty or archived collection, or retained content requires explicit `cascade: true`.
+Otherwise, the request returns space_not_empty. Supply cascade only when the task authorizes deletion of all workspace content.
+
+Deletion atomically removes the workspace, collections, documents, history, saved views, deletion records, and associated content receipts.
+It removes that workspace's retrieval state and cursors. Other workspaces remain unchanged; catalog cursors require a fresh list request.
+Exports and backups remain independent of deletion.
+The receipt contains spaceId, a new deletion revision, disposition `deleted`, and replayed.
+
+A metadata or content change returns revision_conflict with currentRevision and currentSnapshotRevision.
+Read and inspect the workspace again before a new deletion request. Use a new requestId after reconciliation.
+After an ambiguous response, repeat the original payload and requestId, including both original revision preconditions.
+
+Workspace management receipts survive deletion and restart. Creation, replacement, and deletion retries return historical receipts and do not restore data.
+A past creation receipt does not prove the workspace still exists. Content operations against the deleted workspace return not_found.
+Management requests share one requestId namespace for the owner; another operation under an accepted ID returns request_conflict.
+A fresh creation with the deleted key and `ifRevision: "absent"` produces a new workspace ID.
+
+`describe` accepts an optional spaceId and returns the selected spaceId and defaultSpaceId. Omission selects the default workspace.
+Hybrid budgets apply separately to each workspace: 512 documents, 4,096 chunks, and 8 MiB of searchable source text.
+At most eight indexes remain resident. After eviction, `describe` or hybrid search for that workspace requests a rebuild.
+Readiness can report `index_evicted`. Retry hybrid search after `describe` with the same spaceId reports ready.
+Exact reads and lexical search remain available while the index rebuilds.
+
+Stop Keep and back up the complete store before the first open with 0.1.0-alpha.4.
+Opening a schema 5 store upgrades it atomically to schema 6, including through offline commands.
+The previous Personal space becomes Default with the same UUID. All existing collections, documents, history, and retry records remain there.
+No manual collection move is required. Published alpha.3 cannot open the upgraded store.
+
+Offline export accepts `--space-id <uuid>`; omission exports the default workspace. Each export contains one workspace.
+New exports use `inline-space-v4` (format 4) or `file-space-v4` (format 5). Import also accepts their earlier profiles.
+They preserve workspace title, time zone, timestamps, and revision, alongside documents, views, history, and data-write retry receipts.
+Workspace keys, permissions, default selection, and workspace management retry receipts do not transfer.
+
+Import adopts the source workspace as the destination default with key `default` and retains the destination owner.
+Older profiles supply no workspace title or time zone; import supplies `Default` and `UTC`.
+Import requires a pristine whole store. An empty workspace in an existing store is insufficient.
+Creating or updating workspace metadata makes a destination ineligible, even without collections or documents.
+Deleting a newly created empty workspace does not make the store pristine again.
+
 ## Document API
 
 An MCP client starts Keep as a stdio server when it runs `keep` without arguments.
@@ -122,7 +188,8 @@ Keep refuses a selected directory containing `knowledge.db` or its recovery file
 It preserves those files and supplies no conversion or automatic import.
 
 The caller uses `describe` to get the current limits and supported tools.
-The caller uses `list_spaces` to get the persistent Personal space ID.
+Published 0.1.0-alpha.3 has one persistent Personal space. The caller obtains its ID with `list_spaces`.
+For a server with workspace support, follow [workspace selection](#workspaces).
 The caller uses `list_collections` and `list_documents` to inspect existing data.
 The first `put_collection` call uses `ifRevision: "absent"` and a UUID `requestId`.
 The first `put_document` call uses `ifRevision: "absent"` and a different UUID `requestId`.
@@ -155,8 +222,9 @@ It puts the recipe text in `body` and uses `search` with query `lentil` to find 
 The caller can create an `exercise` collection and store a workout with a date in `data`.
 It uses `get_document` to read an exact document and `document_history` to inspect its revisions.
 It uses `export_space` for a small inline transfer.
-An operator uses `keep export --output <file>` for a complete file backup while the server is stopped.
-An operator runs `keep import --input <file> --validate` before an import into another current store.
+An operator uses `keep export --output <file>` for a complete export of the default space while the server is stopped.
+To back up every workspace and store-level retry record, copy the complete stopped store directory.
+An operator runs `keep import --input <file> --validate` before an import into a pristine destination store.
 The file command help gives the required digest and revision values for an import.
 
 An operator can instead use [HTTP setup](#setup) to share one server across clients.

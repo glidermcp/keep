@@ -2,11 +2,13 @@
 
 Run one Keep service and connect all clients to its HTTP endpoint.
 The [Docker Hub image](https://hub.docker.com/r/sacrorum/keep) contains the verified Linux release executable.
-Use `sacrorum/keep:0.1.0-alpha.3-ubuntu26.04` for this guide.
+Use `sacrorum/keep:0.1.0-alpha.4-ubuntu26.04` for this guide.
 This alpha image supports `linux/amd64`. It includes its Ubuntu 26.04 runtime; the host needs no Node.js installation.
 Use Docker Engine with Compose, or Docker Desktop in Linux container mode on an x64 computer.
 
 ## Get the configuration
+
+For an existing store, complete [the backup steps](#update-and-back-up) before you start the new image.
 
 Download and extract the [public repository archive](https://github.com/glidermcp/keep/archive/refs/heads/main.zip).
 Open a terminal in its `docker` directory. Keep this directory for updates and backups.
@@ -32,7 +34,7 @@ On Linux or macOS, run:
 mkdir -p secrets
 chmod 700 secrets
 test ! -e secrets/keep_http_token || exit 1
-docker run --rm sacrorum/keep:0.1.0-alpha.3-ubuntu26.04 --generate-token > secrets/keep_http_token
+docker run --rm sacrorum/keep:0.1.0-alpha.4-ubuntu26.04 --generate-token > secrets/keep_http_token
 chmod 444 secrets/keep_http_token
 ```
 
@@ -41,7 +43,7 @@ In Windows PowerShell, run:
 ```powershell
 New-Item -ItemType Directory -Force secrets | Out-Null
 if (Test-Path secrets/keep_http_token) { throw 'The token file already exists.' }
-docker run --rm sacrorum/keep:0.1.0-alpha.3-ubuntu26.04 --generate-token |
+docker run --rm sacrorum/keep:0.1.0-alpha.4-ubuntu26.04 --generate-token |
     Set-Content -Encoding ascii secrets/keep_http_token
 ```
 
@@ -115,14 +117,24 @@ A mounted license directory does not activate a subscription.
 ## Update and back up
 
 Use an exact image version for controlled updates. Set `KEEP_IMAGE` in a local `.env` file to select another published version.
-For example, the current version is:
+For example, select the 0.1.0-alpha.4 image after its publication:
 
 ```dotenv
-KEEP_IMAGE=sacrorum/keep:0.1.0-alpha.3-ubuntu26.04
+KEEP_IMAGE=sacrorum/keep:0.1.0-alpha.4-ubuntu26.04
 ```
 
 Exact image tags remain unchanged. The `next` tag can move to a newer verified alpha image.
 The container revision follows the native version; an Ubuntu update does not change the Keep executable version.
+
+Stop Keep before the first store access with 0.1.0-alpha.4.
+Back up the complete store directory before you proceed.
+Keep atomically upgrades schema 5 to schema 6 and preserves all content and IDs in Default.
+Default retains the previous space ID. Version 0.1.0-alpha.3 cannot open schema 6.
+
+To roll back, stop Keep.
+Restore the backup that you created before the upgrade.
+Then use the previous executable. That executable alone cannot reverse the upgrade.
+Preserve the data volume, token file, and Compose configuration during the update.
 
 Back up the store before an update. The optional `backup.py` helper requires Python 3 and Docker Compose.
 It stops Keep, copies `/data`, and restarts the service only if it was active before the backup.
@@ -192,8 +204,8 @@ Delete permission is unnecessary. Replace the secret before the token expires, t
 
 Run the workflow from `main` with these inputs:
 
-- `version`: the approved native release, such as `0.1.0-alpha.3`.
-- `image_tag`: the native version plus a container revision, such as `0.1.0-alpha.3-ubuntu26.04`.
+- `version`: the approved native release, such as `0.1.0-alpha.4`.
+- `image_tag`: the native version plus a container revision, such as `0.1.0-alpha.4-ubuntu26.04`.
 - `mode`: `verify` for an existing image, or `publish` for a new image tag. The workflow defaults to `verify`.
 - `tag_next`: select this option to move `next` after the image passes verification.
 
