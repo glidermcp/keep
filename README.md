@@ -8,6 +8,15 @@ Keep lets agents save, organize, and find documents across conversations and pro
 Keep is an alpha. Run one server and connect your clients to its token-protected HTTP endpoint.
 All clients share the same store. Only one process can open that store at a time.
 
+Stop Keep before the first store access with 0.1.0-alpha.4.
+Back up the complete store directory before you proceed.
+Keep atomically upgrades schema 5 to schema 6 and preserves all content and IDs in Default.
+Default retains the previous space ID. Version 0.1.0-alpha.3 cannot open schema 6.
+
+To roll back, stop Keep.
+Restore the backup that you created before the upgrade.
+Then use the previous executable. That executable alone cannot reverse the upgrade.
+
 For Docker on an x64 computer, follow [Install with Docker](https://glidermcp.com/keep/installation).
 The [Docker Hub image](https://hub.docker.com/r/sacrorum/keep) includes its Linux runtime.
 The Compose files provide persistent storage, a token file, and automatic restart.
@@ -20,7 +29,7 @@ npm install --global @glidermcp/keep@next
 ```
 
 The `next` tag selects the alpha. Supported systems are Linux x64 with glibc, macOS Apple Silicon, and Windows x64.
-Linux 0.1.0-alpha.3 requires glibc 2.39 or later, such as Ubuntu 24.04.
+Linux 0.1.0-alpha.3 and later require glibc 2.39 or later, such as Ubuntu 24.04.
 Windows 0.1.0-alpha.2 and later include the required Microsoft Visual C++ runtime.
 Alpha.1 has separate prerequisites in its [release notes](https://github.com/glidermcp/keep/releases/tag/keep-v0.1.0-alpha.1).
 Follow [HTTP setup and native installation](https://github.com/glidermcp/keep/blob/main/tools.md#setup) to create a token and connect clients.
@@ -32,6 +41,8 @@ This skill-only plugin starts no server and adds no MCP registration. It uses yo
 ## What you can do
 
 - Keep project decisions and reusable notes available across sessions.
+- Organize collections into workspaces in 0.1.0-alpha.4, with all previous content in Default.
+- Delete workspaces with Default protected and explicit cascade for non-empty workspaces.
 - Organize text and JSON documents into collections, with optional schemas.
 - Find records with filters, full-text search, and optional local semantic search.
 - Inspect document history and update records with revision checks.
