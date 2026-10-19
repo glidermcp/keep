@@ -2,8 +2,10 @@
 """Probe the final Docker image with an isolated store and synthetic token."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import re
 import secrets
 import subprocess
 import tempfile
@@ -13,6 +15,9 @@ import urllib.request
 import uuid
 
 from prepare import approved, require
+
+# Explicit capabilities preserve old approvals and require review for each new version.
+CREDENTIAL_GENERATION = {"0.1.0-alpha.3": False, "0.1.0-alpha.4": False, "0.1.0-alpha.5": True}
 
 
 def docker(*args, check=True, **kwargs):
@@ -26,8 +31,77 @@ def text(*args):
     return docker(*args).stdout.decode().strip()
 
 
+def validate_credential_output(result):
+    require(result.returncode == 0 and not result.stderr, "Offline credential generation failed.")
+    try:
+        value = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        raise ValueError("The credential generator returned invalid JSON.") from None
+    require(isinstance(value, dict) and set(value) == {"secret", "tokenSha256"},
+            "The credential generator returned unexpected fields.")
+    require(all(isinstance(value[key], str) and re.fullmatch(r"[0-9a-f]{64}", value[key])
+                for key in ("secret", "tokenSha256")), "The credential generator returned an invalid secret or digest.")
+    require(hashlib.sha256(value["secret"].encode("ascii")).hexdigest() == value["tokenSha256"],
+            "The credential digest differs from the secret.")
+
+
+def probe_offline_credentials(image):
+    name = "keep-credential-probe-" + uuid.uuid4().hex[:12]
+    isolated = ("run", "--rm", "--name", name, "--read-only", "--network", "none", "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges:true")
+    # The native generator returns before store or listener setup. Check the final
+    # image route and its observable state without treating network isolation as proof.
+    offline = '''
+set -eu
+test -z "${KEEP_HTTP_TOKEN:-}${KEEP_HTTP_TOKEN_FILE:-}"
+test ! -e /run/secrets/keep_http_token
+test ! -e "$HOME"
+test -z "$(ls -A /data/documents)"
+status=0
+/usr/local/lib/keep/entrypoint.sh "$@" || status=$?
+test ! -e "$HOME"
+test -z "$(ls -A /data/documents)"
+for table in /proc/net/tcp /proc/net/tcp6; do
+    if [ -r "$table" ]; then
+        while read -r slot local_address remote_address state rest; do
+            test "$state" != 0A
+        done < "$table"
+    fi
+done
+exit "$status"
+'''
+    try:
+        validate_credential_output(docker(*isolated, image, "--generate-credential", check=False))
+        checked = (*isolated, "--entrypoint", "/bin/sh", "--workdir", "/tmp", "-e",
+                   "HOME=/tmp/keep-credential-home", image, "-ec", offline, "keep-credential-probe")
+        validate_credential_output(docker(*checked, "--generate-credential", check=False))
+        invalid = [("--generate-credential", "--transport", "http"),
+                   ("--generate-credential", "--data-dir", "/tmp/keep-credential-home"),
+                   ("--generate-credential", "--help"), ("--help", "--generate-credential"),
+                   ("--generate-credential", "--generate-credential"),
+                   ("--generate-credential", "--generate-token"), ("--generate-token", "--generate-credential")]
+        for arguments in invalid:
+            result = docker(*checked, *arguments, check=False)
+            require(result.returncode != 0 and not result.stdout
+                    and b"--generate-credential requires no other arguments." in result.stderr,
+                    "The credential generator accepted invalid arguments or bypassed native validation.")
+        result = docker(*checked, "--transport", "http", "--generate-credential", check=False)
+        require(result.returncode != 0 and not result.stdout,
+                "Operational startup with a credential flag bypassed authentication.")
+        legacy = docker(*isolated, image, "--generate-token", check=False)
+        require(legacy.returncode == 0 and not legacy.stderr and re.fullmatch(rb"[0-9a-f]{64}\n", legacy.stdout),
+                "Offline owner token generation failed.")
+        help_result = docker(*isolated, image, "--help", check=False)
+        require(help_result.returncode == 0 and b"--generate-credential" in help_result.stdout,
+                "Offline help failed.")
+    finally:
+        docker("rm", "-f", name, check=False)
+
+
 def probe(image, version):
     record = approved(version)
+    require(version in CREDENTIAL_GENERATION,
+            "This approved release has no Docker smoke capability record. Update the version capability map.")
     require(text("run", "--rm", image, "--version") == f"keep {version}", "The image version differs.")
     require(text("run", "--rm", "--entrypoint", "sha256sum", image, "/usr/local/bin/keep").split()[0]
             == record["binarySha256"], "The image executable differs from its approval.")
@@ -36,6 +110,9 @@ def probe(image, version):
     require(config["Config"]["User"] == "10001:10001", "The image must use the dedicated nonroot user.")
     report = {"version": version, "imageId": config["Id"], "binarySha256": record["binarySha256"], "checks": []}
     report["checks"].append("approved-binary-version-platform-nonroot")
+    if CREDENTIAL_GENERATION[version]:
+        probe_offline_credentials(image)
+        report["checks"].append("offline-credential-shape-digest-empty-store-no-remaining-listener-invalid-args-legacy-administration")
     name = "keep-probe-" + uuid.uuid4().hex[:12]
     volume = name + "-data"
     restored = name + "-restored"

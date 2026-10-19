@@ -54,6 +54,16 @@ The Linux directory restriction protects the file on the host; the mounted file 
 The image accepts `KEEP_HTTP_TOKEN_FILE` or `KEEP_HTTP_TOKEN`, but rejects both together.
 The supplied Compose file uses the token file.
 
+Use the offline image command to create a scoped credential:
+
+```sh
+docker run --rm --read-only --network none sacrorum/keep:0.1.0-alpha.5-ubuntu26.04 --generate-credential
+```
+
+This command needs no owner token or store.
+Keep the JSON `secret` private. Give only `tokenSha256` to the administrator for registration.
+Follow the [access reference](https://github.com/glidermcp/keep/blob/main/tools.md#access-administration) to assign the intended permissions.
+
 ## Start and connect
 
 ```sh
@@ -89,7 +99,7 @@ The Compose port is available only on this computer.
 For another local port, change both sides of the port mapping and the Keep `--port` argument to the same value.
 Set the service environment variable `KEEP_HTTP_HEALTH_PORT` to that port so the health check uses the same address.
 Keep validates the HTTP Host authority. Changing only the host port can produce a rejected request.
-See the [HTTP reference](../tools.md#http-address-port-and-proxy) for custom listeners and proxies.
+See the [HTTP reference](https://github.com/glidermcp/keep/blob/main/tools.md#http-address-port-and-proxy) for custom listeners and proxies.
 
 ## Storage and optional semantic search
 
@@ -189,13 +199,16 @@ For remote image updates, set `KEEP_IMAGE` in that file instead of the local `.e
 ## Troubleshooting
 
 - **Unhealthy service:** inspect `docker compose logs keep`. Check the token file and volume permissions.
-- **Unauthorized client:** use the same token as the service. Remove accidental spaces from the client header.
+- **Unauthorized client:** check the configured credential, its expiry or revocation, and the principal's enabled state.
+  Remove accidental spaces from the client header. Owner clients use the configured service token.
+  Do not replace a scoped credential with the owner token.
+- **Access denied:** check the intended space grants and credential operations.
 - **Rejected Host:** use `127.0.0.1` and the configured port locally, or the configured HTTPS domain remotely.
 - **Store lock:** stop the other Keep process that owns this store. Do not delete store files to bypass the lock.
 - **Remote connection:** confirm Tailscale connectivity, DNS, the certificate, and access rules before changing Keep's token.
 
 Keep rejects browser Origin headers. Connect with an MCP client rather than browser JavaScript.
-See the [technical reference](../tools.md) for offline transfers, limits, and recovery.
+See the [technical reference](https://github.com/glidermcp/keep/blob/main/tools.md) for offline transfers, limits, and recovery.
 
 ## Publish an image (maintainers)
 
