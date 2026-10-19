@@ -2,7 +2,7 @@
 set -eu
 # Administrative commands do not need an HTTP token.
 case "${1:-}" in
-    --version|-V|--help|-h|--generate-token|export|import)
+    --version|-V|--help|-h|--generate-token|--generate-credential|export|import)
         exec /usr/local/bin/keep "$@" ;;
 esac
 . /usr/local/lib/keep/token.sh

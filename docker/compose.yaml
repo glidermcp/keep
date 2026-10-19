@@ -1,7 +1,7 @@
 name: keep
 services:
   keep:
-    image: ${KEEP_IMAGE:-docker.io/sacrorum/keep:0.1.0-alpha.4-ubuntu26.04}
+    image: ${KEEP_IMAGE:-docker.io/sacrorum/keep:0.1.0-alpha.5-ubuntu26.04}
     platform: linux/amd64
     restart: unless-stopped
     read_only: true

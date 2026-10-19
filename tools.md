@@ -2,12 +2,15 @@
 
 This technical reference is for MCP agents and client integrators.
 
+Keep 0.1.0-alpha.5 uses contract `1.0-draft.k5.3`, schema 7, and the [scoped access contract](#access-administration).
+
 ## Setup
 
-Stop Keep before the first store access with 0.1.0-alpha.4.
+Stop Keep before the first store access with 0.1.0-alpha.5.
 Back up the complete store directory before you proceed.
-Keep atomically upgrades schema 5 to schema 6 and preserves all content and IDs in Default.
-Default retains the previous space ID. Version 0.1.0-alpha.3 cannot open schema 6.
+Keep atomically upgrades schema 5 or 6 to schema 7 and preserves content, IDs, history, and retry records.
+A schema 5 upgrade creates Default with the previous space ID. A schema 6 upgrade preserves workspace IDs and collection assignments.
+Alpha.4 and earlier cannot open schema 7.
 
 To roll back, stop Keep.
 Restore the backup that you created before the upgrade.
@@ -34,7 +37,8 @@ keep --generate-token
 ```
 
 The `next` tag selects the alpha release.
-Save the generated token securely. Use it for the server and every client, including after a restart.
+Save the generated owner token securely. Use it for the server and clients that need full access, including after a restart.
+For restricted clients, register separate [scoped credentials](#register-and-rotate-a-scoped-credential).
 Replace `<token>` below with that value.
 
 Start the server on macOS or Linux:
@@ -82,7 +86,7 @@ Keep reports the actual port on stderr after startup.
 An HTTPS proxy uses `--public-url https://keep.example.com/mcp` and forwards the client's Bearer header.
 The URL must use HTTPS and the exact `/mcp` path, without credentials, queries, fragments, or wildcard hosts.
 Keep accepts that public Host authority or the exact local authority. It rejects every browser Origin header.
-Keep has no account system in this alpha.
+Keep has local principals and credentials. It provides no hosted account service.
 
 `--bind-address` requires Keep 0.1.0-alpha.3 or later.
 Keep defaults to `127.0.0.1`. Select another listener address and port with:
@@ -121,9 +125,9 @@ The native executable runs without Node.js.
 
 ## Workspaces
 
-Keep 0.1.0-alpha.4 uses contract `1.0-draft.k5.2` with workspaces and workspace deletion. Version 0.1.0-alpha.3 has one Personal space.
+Keep 0.1.0-alpha.5 supports workspaces, protected workspace deletion, and scoped access. Version 0.1.0-alpha.3 has one Personal space.
 Check `describe` and the installed schemas before using these tools or options.
-Workspaces use the existing `spaceId` argument. They organize collections; all workspaces share the owner's full-access token.
+Workspaces use the existing `spaceId` argument. Scoped credentials expose only workspaces permitted by current authority.
 
 The caller selects the intended workspace through `list_spaces`. Use `isDefault` to identify the default, rather than list position.
 `get_space` reads workspace metadata, its revision, and the content snapshotRevision together.
@@ -151,23 +155,23 @@ After an ambiguous response, repeat the original payload and requestId, includin
 
 Workspace management receipts survive deletion and restart. Creation, replacement, and deletion retries return historical receipts and do not restore data.
 A past creation receipt does not prove the workspace still exists. Content operations against the deleted workspace return not_found.
-Management requests share one requestId namespace for the owner; another operation under an accepted ID returns request_conflict.
+Management requests share one requestId namespace per principal; another operation under an accepted ID returns request_conflict.
 A fresh creation with the deleted key and `ifRevision: "absent"` produces a new workspace ID.
 
-`describe` accepts an optional spaceId and returns the selected spaceId and defaultSpaceId. Omission selects the default workspace.
+`describe` accepts an optional spaceId and returns the selected spaceId and defaultSpaceId. Omission selects an accessible workspace.
+Its defaultSpaceId is null when Default is inaccessible. With no accessible workspace, both IDs are null.
 Hybrid budgets apply separately to each workspace: 512 documents, 4,096 chunks, and 8 MiB of searchable source text.
 At most eight indexes remain resident. After eviction, `describe` or hybrid search for that workspace requests a rebuild.
 Readiness can report `index_evicted`. Retry hybrid search after `describe` with the same spaceId reports ready.
 Exact reads and lexical search remain available while the index rebuilds.
 
-Stop Keep and back up the complete store before the first open with 0.1.0-alpha.4.
-Opening a schema 5 store upgrades it atomically to schema 6, including through offline commands.
-The previous Personal space becomes Default with the same UUID. All existing collections, documents, history, and retry records remain there.
-No manual collection move is required. Published alpha.3 cannot open the upgraded store.
+Follow the [backup and migration steps](#setup) before the first open, including through offline commands.
+No manual collection move is required.
 
 Offline export accepts `--space-id <uuid>`; omission exports the default workspace. Each export contains one workspace.
-New exports use `inline-space-v4` (format 4) or `file-space-v4` (format 5). Import also accepts their earlier profiles.
-They preserve workspace title, time zone, timestamps, and revision, alongside documents, views, history, and data-write retry receipts.
+Single-owner exports use `inline-space-v4` (format 4) or `file-space-v4` (format 5). Import also accepts their earlier profiles.
+[Organization content transfers](#source-upgrades-and-organization-transfers) omit operational receipts and authority.
+Single-owner profiles preserve workspace title, time zone, timestamps, and revision, alongside documents, views, history, and data-write retry receipts.
 Workspace keys, permissions, default selection, and workspace management retry receipts do not transfer.
 
 Import adopts the source workspace as the destination default with key `default` and retains the destination owner.
@@ -175,6 +179,129 @@ Older profiles supply no workspace title or time zone; import supplies `Default`
 Import requires a pristine whole store. An empty workspace in an existing store is insufficient.
 Creating or updating workspace metadata makes a destination ineligible, even without collections or documents.
 Deleting a newly created empty workspace does not make the store pristine again.
+
+<a id="access-administration-unreleased"></a>
+
+## Access administration
+
+Keep 0.1.0-alpha.5 uses contract `1.0-draft.k5.3` with scoped access and eight administration tools.
+Use the installed schemas before attempting this workflow. Personal stdio and the configured `KEEP_HTTP_TOKEN` retain full bootstrap-owner authority.
+Scoped credentials intersect enabled identity, current workspace membership, credential workspace IDs, operation scopes, expiry, and revocation.
+A credential scope alone grants no membership. A workspace owner is distinct from a store administrator.
+
+| Authority | Required role and credential scope |
+| --- | --- |
+| Discovery, reads, history, search, exact queries, views, and aggregates | Workspace membership and `read` |
+| Document, collection, and view writes; document deletion | `editor` or `owner`, with `write` |
+| Workspace metadata replacement, deletion, and grants | `owner`, with `manage` |
+| Workspace export | Workspace membership and explicit `export` |
+| Principal and credential administration, workspace creation, import, and audit | Administrator identity with `admin` |
+
+`reader`, `editor`, and `owner` are membership roles. Credential operations are `read`, `write`, `manage`, `export`, and `admin`.
+
+| Membership role | Eligible operations |
+| --- | --- |
+| reader | `read`, `export` |
+| editor | `read`, `write`, `export` |
+| owner | `read`, `write`, `manage`, `export` |
+
+Roles define eligibility. Effective operations also require the credential scope and workspace.
+A scoped administrator still needs workspace membership and scope for workspace content operations.
+The bootstrap owner stays enabled and administrative, with protected owner grants. Imported actor metadata grants no authority.
+Documents remain private. Keep provides no anonymous or public document access.
+
+### Discover and recover within granted access
+
+`list_spaces` returns only accessible workspaces and effective permissions.
+`describe` without spaceId selects an accessible workspace. Its defaultSpaceId is null when Default is inaccessible.
+With no accessible workspace, describe returns general capabilities with null workspace IDs.
+Tool capability readiness reports product support, not current caller permission.
+Retrieval readiness reports the selected workspace state.
+Keep returns `not_found` for absent or inaccessible resources. A visible workspace can return `permission_denied` for an unauthorized operation.
+Do not infer resource existence from either response or automatically obtain broader credentials.
+
+Every operation rechecks current authority. After accepted revocation, subsequent operations fail, including calls through an existing connection.
+An operation already executing can finish before revocation commits.
+Restart preserves principals, memberships, credential digests, expiry, and revocation state.
+Cursors bind to the principal, credential, authorization revision, and existing query/snapshot state.
+After `cursor_expired`, repeat discovery or the original query without a cursor under current authority.
+Content retries remain principal-based across credential rotation, but the current credential must still authorize the operation and workspace.
+A historical receipt proves the earlier mutation; it does not restore content or prove current access or state.
+
+### Administration arguments
+
+Every mutation requires a UUID requestId and ifRevision. Use `absent` for creation and the current revision for replacement.
+`revoke_credential` requires the current revision. Read the appropriate list for revisions before changes.
+
+| Tool | Additional required arguments | Optional arguments |
+| --- | --- | --- |
+| put_principal | principalId, definition | None |
+| put_space_grant | spaceId, principalId, role | None |
+| put_credential | credentialId, principalId, tokenSha256, spaceIds, operations, expiresAt | replacesCredentialId, ifReplacesRevision |
+| revoke_credential | credentialId | None |
+| list_principals | None | limit, cursor |
+| list_space_grants | spaceId | limit, cursor |
+| list_credentials | None | principalId, limit, cursor |
+| list_audit_events | None | limit, cursor |
+
+The principal definition requires name, kind (`human` or `agent`), enabled, and administrator. IDs are UUIDs.
+A grant role is `reader`, `editor`, `owner`, or null. Null revokes membership and retains its revision.
+Grant administration requires owner membership and manage scope. The other administration tools require store administration.
+Lists accept limit 1–50, default 20, and return items, nextCursor, snapshotRevision, and exact coverage.
+Credential lists exclude secrets and digests. Audit pages retain the first page's upper bound.
+Mutation receipts contain target IDs, revision, disposition, and replayed.
+
+After a revision conflict, read current metadata and reconcile before a new request with a new requestId.
+After an ambiguous response, retain the original payload and requestId.
+An administration retry can return a historical receipt after later changes; inspect current metadata before relying on its state.
+Current authorization still applies. A denied retry does not justify broader credentials or a fresh mutation.
+
+### Register and rotate a scoped credential
+
+For an authorized credential setup, the operator runs `keep --generate-credential` locally.
+It prints JSON with secret and tokenSha256 to operator stdout without opening a store.
+Keep this output outside chat, source control, documents, and logs. Store the secret in the client's secret storage.
+The digest covers the 64 ASCII lowercase hexadecimal secret characters, without the newline.
+Generation neither registers a credential nor grants authority. Send only tokenSha256 through `put_credential`; never send the secret through MCP.
+
+The administrator registers a new credential UUID, principalId, explicit spaceIds and operations, and a future expiresAt.
+Space IDs permit at most 128 unique UUIDs. Operations permit at most five unique values; there is no implicit wildcard.
+The client uses the secret as its Bearer token. The principal also needs current membership in each intended workspace.
+A credential ID keeps its original principal and digest. A revoked ID cannot become active again.
+
+Rotation registers a new credential ID with `ifRevision: "absent"`, replacesCredentialId, and the old credential's ifReplacesRevision.
+Insertion and revocation commit atomically. A stale rotation leaves the old credential valid.
+Read `list_credentials` again after a conflict and reconcile before a fresh rotation request.
+`--generate-token` and the configured owner token keep their existing behavior; scoped rotation does not rotate that owner token.
+
+### Audit and recovery
+
+Successful content and administration mutations append audit atomically with their state and retry receipts.
+Events retain principal and credential identity or trusted authentication class, operation/resource IDs, revisions, request ID, and server time.
+They exclude content, titles, excerpts, secrets, and digests. Reads, denials, and receipt replays create no new event.
+Audit remains for the store lifetime, including after workspace deletion or principal disable. There is no audit edit or deletion tool.
+A stopped-store backup preserves authority, audit, and operational retries. Document exports omit authority and audit.
+Protect backups as sensitive data; restored backups contain their historical access state.
+
+### Source upgrades and organization transfers
+
+Before first use of alpha.5, stop Keep and back up its complete store directory.
+The build upgrades schema 5 or 6 atomically to schema 7, preserving content, identity, history, and retry records.
+Published alpha.4 and earlier cannot open schema 7. Rollback requires the previous executable and the pre-upgrade backup.
+Offline commands perform the same upgrade. Access metadata alone does not prevent a pristine import.
+
+A workspace with other principals' operational receipts or actors that identify other local principals uses an organization content-transfer profile.
+Imported foreign actors remain provenance. Profile selection is automatic for the selected workspace.
+Inline format 5 uses `organization-content-v1`; file format 6 uses `organization-file-content-v1`.
+They preserve content, IDs, revisions, schemas, views, links, historical actors, and tombstones.
+They exclude operational retries, principals, grants, credentials, and audit. Metadata reports operationalReceipts `excluded`, retries zero, and coverage `content`.
+Legacy single-owner profiles retain data-write retries and report operationalReceipts `included` and coverage `complete`.
+Neither transfer is a complete store backup. Copy the complete stopped store to preserve operational retries, authority, and audit.
+For MCP import, spaceId names the pristine destination workspace before import.
+After apply, new calls use the adopted source ID. Retries retain the original destination ID and payload.
+Import retains local authority and adds its bootstrap owner's grant for the adopted workspace.
+Previous local grant rows can remain; they give no access to absent workspaces.
+Existing scoped credentials retain their original space ID limits. Imported actor identities grant no authority.
 
 ## Document API
 
@@ -191,6 +318,9 @@ The caller uses `describe` to get the current limits and supported tools.
 Published 0.1.0-alpha.3 has one persistent Personal space. The caller obtains its ID with `list_spaces`.
 For a server with workspace support, follow [workspace selection](#workspaces).
 The caller uses `list_collections` and `list_documents` to inspect existing data.
+Without explicit fields, `list_documents` returns identity plus title, summary, tags, createdAt, and updatedAt.
+The default omits data, body, and status. Omission does not prove that the document lacks a value.
+Request explicit fields or use `get_document` when the task needs omitted values.
 The first `put_collection` call uses `ifRevision: "absent"` and a UUID `requestId`.
 The first `put_document` call uses `ifRevision: "absent"` and a different UUID `requestId`.
 After `list_spaces`, the caller creates a collection with the returned space ID:

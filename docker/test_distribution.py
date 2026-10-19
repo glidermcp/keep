@@ -2,9 +2,14 @@
 """Integrity and recovery regression checks that need no Docker daemon."""
 
 import argparse
+import hashlib
 import io
 import json
+import os
 from pathlib import Path
+import shlex
+import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -14,6 +19,7 @@ import urllib.error
 import backup
 import prepare
 import publish
+import smoke
 
 
 class DistributionTests(unittest.TestCase):
@@ -61,6 +67,136 @@ class DistributionTests(unittest.TestCase):
                          {"native", "Dockerfile", ".dockerignore", "entrypoint.sh", "token.sh", "healthcheck.sh"})
         with patch.object(prepare, "approved", return_value=self.record), self.assertRaisesRegex(ValueError, "empty"):
             prepare.prepare(self.version, destination, self.directory)
+
+    def test_credential_smoke_validates_shape_digest_and_keeps_failure_messages_private(self):
+        secret = "a" * 64
+        valid = {"secret": secret, "tokenSha256": hashlib.sha256(secret.encode("ascii")).hexdigest()}
+        result = subprocess.CompletedProcess([], 0, json.dumps(valid).encode(), b"")
+        self.assertIsNone(smoke.validate_credential_output(result))
+        invalid = [({}, 0, b""), ({**valid, "extra": True}, 0, b""),
+                   ({**valid, "secret": "A" * 64}, 0, b""), ({**valid, "secret": "a" * 63}, 0, b""),
+                   ({**valid, "tokenSha256": "0" * 64}, 0, b""),
+                   ({**valid, "tokenSha256": None}, 0, b""), (valid, 1, secret.encode()),
+                   (valid, 0, secret.encode())]
+        for payload, status, stderr in invalid:
+            with self.subTest(status=status, fields=set(payload)):
+                result = subprocess.CompletedProcess([], status, json.dumps(payload).encode(), stderr)
+                with self.assertRaises(ValueError) as error:
+                    smoke.validate_credential_output(result)
+                self.assertNotIn(secret, str(error.exception))
+                self.assertNotIn(valid["tokenSha256"], str(error.exception))
+        with self.assertRaisesRegex(ValueError, "invalid JSON") as error:
+            smoke.validate_credential_output(subprocess.CompletedProcess([], 0, b"private-invalid-json", b""))
+        self.assertNotIn("private-invalid-json", str(error.exception))
+
+    def test_approved_version_capabilities_gate_only_the_new_credential_probe(self):
+        class ExistingSmokeChecksReached(Exception):
+            pass
+
+        def command(*arguments, **kwargs):
+            if arguments[:2] == ("run", "--rm"):
+                raise ExistingSmokeChecksReached()
+            return subprocess.CompletedProcess([], 0, b"", b"")
+
+        configuration = {"Architecture": "amd64", "Os": "linux", "Id": "synthetic-image",
+                         "Config": {"User": "10001:10001"}}
+        for version, credential_probe in (("0.1.0-alpha.3", False), ("0.1.0-alpha.4", False), ("0.1.0-alpha.5", True)):
+            with self.subTest(version=version), patch.object(smoke, "approved", return_value=self.record), \
+                    patch.object(smoke, "text", side_effect=[f"keep {version}", self.record["binarySha256"],
+                                                             json.dumps([configuration])]), \
+                    patch.object(smoke, "probe_offline_credentials") as offline, \
+                    patch.object(smoke, "docker", side_effect=command) as commands:
+                with self.assertRaises(ExistingSmokeChecksReached):
+                    smoke.probe("synthetic-image", version)
+                if credential_probe:
+                    offline.assert_called_once_with("synthetic-image")
+                else:
+                    offline.assert_not_called()
+                self.assertEqual(commands.call_args_list[0].args, ("run", "--rm", "synthetic-image"))
+
+    def test_new_approved_version_requires_explicit_capabilities_before_docker(self):
+        with patch.object(smoke, "approved", return_value=self.record), patch.object(smoke, "text") as text, \
+                patch.object(smoke, "docker") as commands, patch.object(smoke, "probe_offline_credentials") as offline:
+            with self.assertRaisesRegex(ValueError, "Update the version capability map"):
+                smoke.probe("synthetic-image", "0.1.0-alpha.99")
+            text.assert_not_called()
+            commands.assert_not_called()
+            offline.assert_not_called()
+
+    def test_alpha5_malformed_or_mismatched_credential_output_fails_the_image_probe(self):
+        configuration = {"Architecture": "amd64", "Os": "linux", "Id": "synthetic-image",
+                         "Config": {"User": "10001:10001"}}
+        invalid = [b"private-invalid-json", json.dumps({"secret": "a" * 64, "tokenSha256": "0" * 64}).encode()]
+        for index, payload in enumerate(invalid):
+            result = subprocess.CompletedProcess([], 0, payload, b"")
+            with self.subTest(case=index), patch.object(smoke, "approved", return_value=self.record), \
+                    patch.object(smoke, "text", side_effect=["keep 0.1.0-alpha.5", self.record["binarySha256"],
+                                                             json.dumps([configuration])]), \
+                    patch.object(smoke, "probe_offline_credentials", side_effect=lambda image: smoke.validate_credential_output(result)), \
+                    patch.object(smoke, "docker") as commands:
+                with self.assertRaises(ValueError):
+                    smoke.probe("synthetic-image", "0.1.0-alpha.5")
+                commands.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("sh"), "The entrypoint routing test requires a POSIX shell.")
+    def test_entrypoint_routes_offline_credential_to_native_without_loading_http_auth(self):
+        native = self.directory / "native-keep"
+        token_loader = self.directory / "token.sh"
+        entrypoint = self.directory / "entrypoint.sh"
+        arguments_file = self.directory / "arguments"
+        gate = self.directory / "token-loader-called"
+        native.write_text('''#!/bin/sh
+set -eu
+printf '%s\\n' "$@" > "$KEEP_TEST_ARGUMENTS"
+for argument in "$@"; do
+    if [ "$argument" = --generate-credential ]; then
+        [ "$#" -eq 1 ] || exit 23
+        printf '%s\\n' "$KEEP_TEST_CREDENTIAL"
+        exit 0
+    fi
+done
+case "${1:-}" in
+    --generate-token|--version|-V|--help|-h|export|import) exit 0 ;;
+esac
+exit 23
+''', encoding="utf-8", newline="\n")
+        native.chmod(0o755)
+        token_loader.write_text('''load_keep_token() {
+    printf called > "$KEEP_TEST_GATE"
+    return 47
+}
+''', encoding="utf-8", newline="\n")
+        script = (Path(__file__).parent / "entrypoint.sh").read_text(encoding="utf-8")
+        script = script.replace("/usr/local/bin/keep", shlex.quote(str(native)))
+        script = script.replace("/usr/local/lib/keep/token.sh", shlex.quote(str(token_loader)))
+        entrypoint.write_text(script, encoding="utf-8", newline="\n")
+        secret = "b" * 64
+        environment = {"PATH": os.defpath, "KEEP_TEST_ARGUMENTS": str(arguments_file), "KEEP_TEST_GATE": str(gate),
+                       "KEEP_TEST_CREDENTIAL": json.dumps({"secret": secret,
+                           "tokenSha256": hashlib.sha256(secret.encode("ascii")).hexdigest()})}
+
+        def run(*arguments):
+            return subprocess.run([shutil.which("sh"), str(entrypoint), *arguments], env=environment,
+                                  capture_output=True, timeout=10)
+
+        smoke.validate_credential_output(run("--generate-credential"))
+        self.assertFalse(gate.exists())
+        invalid = [("--generate-credential", "--transport", "http"),
+                   ("--generate-credential", "--data-dir", str(self.directory / "no-store")),
+                   ("--generate-credential", "--generate-token"), ("--generate-token", "--generate-credential"),
+                   ("--generate-credential", "--generate-credential"), ("--help", "--generate-credential")]
+        for arguments in invalid:
+            with self.subTest(arguments=arguments):
+                result = run(*arguments)
+                self.assertEqual(result.returncode, 23)
+                self.assertFalse(result.stdout or gate.exists())
+                self.assertEqual(arguments_file.read_text().splitlines(), list(arguments))
+        for arguments in [("--generate-token",), ("--help",), ("--version",), ("export",), ("import",)]:
+            self.assertEqual(run(*arguments).returncode, 0)
+            self.assertFalse(gate.exists())
+        self.assertEqual(run("--transport", "http").returncode, 47)
+        self.assertTrue(gate.exists())
+        self.assertFalse((self.directory / "no-store").exists())
 
     def test_version_must_be_explicitly_approved(self):
         for version in ["latest", "next", "../0.1.0-alpha.3", "0.1.0-alpha.99"]:
