@@ -1,8 +1,21 @@
 name: Publish Keep Docker
+run-name: Keep Docker ${{ inputs.mode }} ${{ inputs.version }} ${{ inputs.image_tag }}
 
 on:
   workflow_dispatch:
     inputs:
+      expected_controller_sha:
+        description: Optional full main controller SHA; fail before mutation if main changes
+        default: ''
+        type: string
+      expected_next_digest:
+        description: Optional approved next digest, or absent; pair with the latest digest
+        default: ''
+        type: string
+      expected_latest_digest:
+        description: Optional approved latest digest, or absent; pair with the next digest
+        default: ''
+        type: string
       version:
         description: Approved native Keep alpha version
         required: true
@@ -37,6 +50,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
+      - name: Check the selected controller before any release work
+        env:
+          EXPECTED_CONTROLLER: ${{ inputs.expected_controller_sha }}
+          ACTUAL_CONTROLLER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EXPECTED_CONTROLLER" ]; then
+            [[ "$EXPECTED_CONTROLLER" =~ ^[0-9a-f]{40}$ ]]
+            test "$EXPECTED_CONTROLLER" = "$ACTUAL_CONTROLLER"
+          fi
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
@@ -58,9 +81,11 @@ jobs:
           KEEP_IMAGE_TAG: ${{ inputs.image_tag }}
           KEEP_MODE: ${{ inputs.mode }}
           TAG_NEXT: ${{ inputs.tag_next }}
+          EXPECTED_NEXT_DIGEST: ${{ inputs.expected_next_digest }}
+          EXPECTED_LATEST_DIGEST: ${{ inputs.expected_latest_digest }}
         run: |
           set -euo pipefail
-          args=(--version "$KEEP_VERSION" --image-tag "$KEEP_IMAGE_TAG" --mode "$KEEP_MODE" --evidence evidence)
+          args=(--version "$KEEP_VERSION" --image-tag "$KEEP_IMAGE_TAG" --mode "$KEEP_MODE" --evidence evidence --expected-next-digest "$EXPECTED_NEXT_DIGEST" --expected-latest-digest "$EXPECTED_LATEST_DIGEST")
           if [ "$TAG_NEXT" = true ]; then args+=(--tag-next); fi
           python docker/publish.py "${args[@]}"
       - name: Preserve image evidence
