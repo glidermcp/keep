@@ -30,7 +30,7 @@ def command(*args, env=None):
     return result.stdout.strip()
 
 
-def require_absent(image_tag):
+def manifest_digest(image_tag):
     # An anonymous registry token has no account credentials or push permissions.
     url = f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{REPOSITORY}:pull"
     with urllib.request.urlopen(url, timeout=30) as response:
@@ -46,13 +46,41 @@ def require_absent(image_tag):
                                              "Accept": accepted_types,
                                              "User-Agent": "Keep-Docker"})
     try:
-        with urllib.request.urlopen(request, timeout=30):
-            raise ValueError("The image tag already exists. Use verify mode; version tags are immutable.")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            digest = getattr(response, "headers", {}).get("Docker-Content-Digest", "")
+            require(bool(re.fullmatch(r"sha256:[0-9a-f]{64}", digest)), "The registry returned an invalid image digest.")
+            return digest
     except urllib.error.HTTPError as error:
         require(error.code == 404, f"The registry lookup failed with HTTP {error.code}. Publish requires a missing manifest.")
         errors = json.load(error).get("errors", [])
         require(len(errors) == 1 and errors[0].get("code") == "MANIFEST_UNKNOWN",
                 "The registry did not confirm a missing manifest. Publish requires MANIFEST_UNKNOWN.")
+        return None
+
+
+def require_absent(image_tag):
+    require(manifest_digest(image_tag) is None,
+            "The image tag already exists. Use verify mode; version tags are immutable.")
+
+
+def channel_expectations(args):
+    next_digest = getattr(args, "expected_next_digest", "")
+    latest_digest = getattr(args, "expected_latest_digest", "")
+    require(bool(next_digest) == bool(latest_digest), "Supply both expected channel digests or neither.")
+    for value in (next_digest, latest_digest):
+        require(not value or value == "absent" or re.fullmatch(r"sha256:[0-9a-f]{64}", value),
+                "An expected channel digest must be sha256 or absent.")
+    return next_digest, latest_digest
+
+
+def guard_channels(expected_next, expected_latest, target_digest):
+    if not expected_next:
+        return
+    latest = manifest_digest("latest")
+    current = manifest_digest("next")
+    require((latest or "absent") == expected_latest, "The latest channel changed. Reconcile before promotion.")
+    require((current or "absent") == expected_next or current == target_digest,
+            "The next channel changed after approval. Reconcile before promotion.")
 
 
 def push(tag):
@@ -72,6 +100,7 @@ def anonymous_pull(tag):
 
 
 def publish(args):
+    expected_next, expected_latest = channel_expectations(args)
     record = approved(args.version)
     validate_image_tag(args.version, args.image_tag)
     tag = f"{IMAGE}:{args.image_tag}"
@@ -102,12 +131,17 @@ def publish(args):
                 "--output", str(evidence / "smoke.json"))
         report["anonymousPull"] = True
         if args.tag_next:
+            # The global workflow queue can delay this job beyond the parent preflight.
+            guard_channels(expected_next, expected_latest, report["digest"])
             # Copy the registry manifest, including an existing index and its provenance.
             command("docker", "buildx", "imagetools", "create", "--prefer-index=false",
                     "--tag", f"{IMAGE}:next", immutable)
             report["nextDigest"] = anonymous_pull(f"{IMAGE}:next")
             require(report["nextDigest"] == report["digest"], "The next tag returned another image digest.")
             report["next"] = True
+            if expected_latest:
+                require((manifest_digest("latest") or "absent") == expected_latest,
+                        "The latest channel changed during promotion.")
     finally:
         (evidence / "image.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
 
@@ -118,6 +152,8 @@ def main():
     parser.add_argument("--image-tag", required=True, help="Immutable tag with the Keep version and container revision.")
     parser.add_argument("--mode", choices=["publish", "verify"], default="publish")
     parser.add_argument("--tag-next", action="store_true")
+    parser.add_argument("--expected-next-digest", default="")
+    parser.add_argument("--expected-latest-digest", default="")
     parser.add_argument("--assets")
     parser.add_argument("--evidence", default="evidence")
     publish(parser.parse_args())

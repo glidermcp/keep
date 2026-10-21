@@ -316,6 +316,72 @@ exit 23
         report = json.loads((self.directory / "evidence/image.json").read_text())
         self.assertTrue(report["anonymousPull"] and report["next"])
 
+    def test_channel_snapshot_rejects_invalid_or_incomplete_inputs_before_docker(self):
+        for next_digest, latest_digest in [("absent", ""), ("", "absent"), ("unknown", "absent"),
+                                           ("sha256:short", "absent"), ("absent", "sha256:" + "A" * 64)]:
+            args = self.publish_args()
+            args.expected_next_digest, args.expected_latest_digest = next_digest, latest_digest
+            with self.subTest(next=next_digest, latest=latest_digest), \
+                    patch.object(publish, "command") as command, patch.object(publish, "anonymous_pull") as pull, \
+                    self.assertRaises(ValueError):
+                publish.publish(args)
+            command.assert_not_called()
+            pull.assert_not_called()
+
+    def test_queued_release_rechecks_channels_after_smoke_before_next_mutation(self):
+        target = "sha256:" + "a" * 64
+        previous = "sha256:" + "b" * 64
+        advanced = "sha256:" + "c" * 64
+        for latest, next_digest in [(None, advanced), (advanced, previous)]:
+            args = self.publish_args()
+            args.expected_next_digest, args.expected_latest_digest = previous, "absent"
+            events = []
+
+            def command(*arguments, **kwargs):
+                events.append(arguments)
+                return ""
+
+            with self.subTest(latest=latest, next=next_digest), patch.object(publish, "approved", return_value=self.record), \
+                    patch.object(publish, "anonymous_pull", return_value=target), \
+                    patch.object(publish, "manifest_digest", side_effect=[latest, next_digest]) as channels, \
+                    patch.object(publish, "command", side_effect=command), self.assertRaisesRegex(ValueError, "channel changed"):
+                publish.publish(args)
+            self.assertEqual(channels.call_count, 2)
+            self.assertEqual(len(events), 1)
+            self.assertIn("smoke.py", events[0][1])
+            report = json.loads((self.directory / "evidence/image.json").read_text())
+            self.assertTrue(report["anonymousPull"])
+            self.assertFalse(report["next"])
+
+    def test_channel_guard_allows_original_snapshot_and_same_target_recovery(self):
+        target = "sha256:" + "a" * 64
+        previous = "sha256:" + "b" * 64
+        for current in (previous, target):
+            args = self.publish_args()
+            args.expected_next_digest, args.expected_latest_digest = previous, "absent"
+            with self.subTest(current=current), patch.object(publish, "approved", return_value=self.record), \
+                    patch.object(publish, "anonymous_pull", return_value=target), patch.object(publish, "command") as command, \
+                    patch.object(publish, "manifest_digest", side_effect=[None, current, None]):
+                publish.publish(args)
+            self.assertEqual(command.call_args_list[1].args[:4], ("docker", "buildx", "imagetools", "create"))
+            report = json.loads((self.directory / "evidence/image.json").read_text())
+            self.assertTrue(report["next"])
+
+    def test_channel_guard_network_failure_cannot_mean_absent(self):
+        with patch.object(publish, "manifest_digest", side_effect=urllib.error.URLError("network unavailable")), \
+                self.assertRaises(urllib.error.URLError):
+            publish.guard_channels("absent", "absent", "sha256:" + "a" * 64)
+
+    def test_channel_guard_detects_latest_change_after_next_promotion(self):
+        target = "sha256:" + "a" * 64
+        args = self.publish_args()
+        args.expected_next_digest = args.expected_latest_digest = "absent"
+        with patch.object(publish, "approved", return_value=self.record), \
+                patch.object(publish, "anonymous_pull", return_value=target), patch.object(publish, "command"), \
+                patch.object(publish, "manifest_digest", side_effect=[None, None, "sha256:" + "b" * 64]), \
+                self.assertRaisesRegex(ValueError, "latest channel changed during"):
+            publish.publish(args)
+
     def test_failed_anonymous_probe_does_not_promote_next(self):
         with patch.object(publish, "approved", return_value=self.record), \
                 patch.object(publish, "anonymous_pull", return_value="sha256:" + "a" * 64), \
