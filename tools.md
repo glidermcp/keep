@@ -2,7 +2,9 @@
 
 This technical reference is for MCP agents and client integrators.
 
-Keep 0.1.0-alpha.5 uses contract `1.0-draft.k5.3`, schema 7, and the [scoped access contract](#access-administration).
+Keep 0.1.0-alpha.6 uses contract `1.0-draft.k5.4`, schema 7, and thirty-one tools.
+It includes [scoped access](#access-administration) and [record links](#record-links).
+Alpha.5 uses `1.0-draft.k5.3`, schema 7, and twenty-nine tools.
 
 ## Setup
 
@@ -302,6 +304,47 @@ After apply, new calls use the adopted source ID. Retries retain the original de
 Import retains local authority and adds its bootstrap owner's grant for the adopted workspace.
 Previous local grant rows can remain; they give no access to absent workspaces.
 Existing scoped credentials retain their original space ID limits. Imported actor identities grant no authority.
+
+## Record links
+
+These two read tools require Keep 0.1.0-alpha.6 and contract `1.0-draft.k5.4`.
+Alpha.5 has no record-link tools. Check `describe` and the installed schemas before use.
+
+| Tool | Required arguments | Optional arguments | Result |
+| --- | --- | --- | --- |
+| `get_document_link` | `spaceId`, `documentId` | `revision` | `{uri, storeId, spaceId, documentId, revision}` |
+| `resolve_document_link` | `uri` | None | The complete current document or specified revision, as returned by `get_document` |
+
+The caller selects the intended document, then requests its link with `get_document_link`.
+Omit `revision` for a live link that follows later edits. Supply a revision from `document_history` to pin that historical value.
+The request rejects an explicit null revision. The result uses `revision: null` for a live link.
+Link creation checks current read access and target existence. It changes no document, revision, retry receipt, or audit event.
+
+The canonical forms are:
+
+```text
+keep://<storeId>/s/<spaceId>/d/<documentId>
+keep://<storeId>/s/<spaceId>/d/<documentId>/r/<revisionId>
+```
+
+Each ID is a lowercase, hyphenated UUID. The URI permits exact ASCII and at most 160 bytes.
+Queries, fragments, credentials, ports, percent encoding, whitespace, alternate case, and trailing slashes are invalid.
+Malformed URIs return `invalid_arguments`; a URI above 160 bytes returns `limit_exceeded`.
+Copy the returned URI without changes.
+
+The recipient uses `resolve_document_link` through an existing, trusted connection to the same Keep store.
+The link grants no authority. Both tools check current principal status, workspace membership, credential scopes, expiry, and revocation.
+A foreign store, missing target, or inaccessible workspace returns `not_found` without confirming existence.
+A caller with workspace membership but insufficient operation scope can receive `permission_denied`.
+Do not obtain owner credentials merely to resolve a denied link.
+
+Both forms can read archived documents. Deleted documents and deleted workspaces cannot resolve, including through historical links.
+These addresses provide no browser page, public access, automatic connection, or network fetch.
+They remain separate from the same-space relation objects in a document's `links` field.
+
+A restart or complete stopped-store backup restoration preserves the store ID and link identity.
+A workspace import retains the destination store ID, even when it preserves workspace and document IDs. Generate new links in that destination.
+Alpha.5 and alpha.6 both use schema 7. This change requires no schema upgrade for an alpha.5 store.
 
 ## Document API
 

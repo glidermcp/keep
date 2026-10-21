@@ -19,5 +19,12 @@
     "binarySha256": "257337634baf12eeccd49e3486a685c7a34aff240740d0f35672edf6bd228a4b",
     "licenseSha256": "d6f4d11b5bad7d810016f1ca70dac6f02796f5c68664cc1b10161874c8a6967a",
     "noticesSha256": "c9d73fb93335fe6aa5efd6af080e2e3bbc53efeea137f07d2b0885167d45406b"
+  },
+  "0.1.0-alpha.6": {
+    "manifestSha256": "e9d68b82c168c70c041712a62016d900f434b5dc7479a73caffe9af8e68343d7",
+    "archiveSha256": "ebb3fe0d894aaadf88e04d6017a2db57ffae5cb05974af543a0d66b66f016475",
+    "binarySha256": "61b40c2a648fbdbf5b3d16b47e7c3348a2ed06eee336e6d9680876e6eb14bf97",
+    "licenseSha256": "c950fff900b2abdfc82f2712294169948f325ff94b3179c889c0ab8ecbfa7329",
+    "noticesSha256": "c9d73fb93335fe6aa5efd6af080e2e3bbc53efeea137f07d2b0885167d45406b"
   }
 }

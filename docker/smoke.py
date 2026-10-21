@@ -17,7 +17,7 @@ import uuid
 from prepare import approved, require
 
 # Explicit capabilities preserve old approvals and require review for each new version.
-CREDENTIAL_GENERATION = {"0.1.0-alpha.3": False, "0.1.0-alpha.4": False, "0.1.0-alpha.5": True}
+CREDENTIAL_GENERATION = {"0.1.0-alpha.3": False, "0.1.0-alpha.4": False, "0.1.0-alpha.5": True, "0.1.0-alpha.6": True}
 
 
 def docker(*args, check=True, **kwargs):
