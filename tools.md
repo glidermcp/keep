@@ -8,8 +8,8 @@ Alpha.5 uses `1.0-draft.k5.3`, schema 7, and twenty-nine tools.
 
 ## Setup
 
-Stop Keep before the first store access with 0.1.0-alpha.5.
-Back up the complete store directory before you proceed.
+Before an update, stop Keep.
+Back up its complete store directory before you proceed.
 Keep atomically upgrades schema 5 or 6 to schema 7 and preserves content, IDs, history, and retry records.
 A schema 5 upgrade creates Default with the previous space ID. A schema 6 upgrade preserves workspace IDs and collection assignments.
 Alpha.4 and earlier cannot open schema 7.
@@ -287,7 +287,8 @@ Protect backups as sensitive data; restored backups contain their historical acc
 
 ### Source upgrades and organization transfers
 
-Before first use of alpha.5, stop Keep and back up its complete store directory.
+Before an update, stop Keep.
+Back up its complete store directory before you proceed.
 The build upgrades schema 5 or 6 atomically to schema 7, preserving content, identity, history, and retry records.
 Published alpha.4 and earlier cannot open schema 7. Rollback requires the previous executable and the pre-upgrade backup.
 Offline commands perform the same upgrade. Access metadata alone does not prevent a pristine import.

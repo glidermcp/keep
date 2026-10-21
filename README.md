@@ -8,8 +8,8 @@ Keep lets agents save, organize, and find documents across conversations and pro
 Keep is an alpha. Run one server and connect your clients to its token-protected HTTP endpoint.
 All clients share the same store. Only one process can open that store at a time.
 
-Stop Keep before the first store access with 0.1.0-alpha.5.
-Back up the complete store directory before you proceed.
+Before an update, stop Keep.
+Back up its complete store directory before you proceed.
 Keep atomically upgrades schema 5 or 6 to schema 7 and preserves content, IDs, history, and retry records.
 A schema 5 upgrade creates Default with the previous space ID. A schema 6 upgrade preserves workspace IDs and collection assignments.
 Alpha.4 and earlier cannot open schema 7.
