@@ -19,7 +19,7 @@ git clone https://github.com/glidermcp/keep.git
 cd keep/docker
 ```
 
-The [site guide](https://glidermcp.com/keep/installation) explains the setup and client connection.
+The [site guide](https://glidermcp.com/docs/keep/installation) explains the setup and client connection.
 The steps below use the supplied `compose.yaml`.
 
 ## Create a token
@@ -185,7 +185,7 @@ Do not run both projects on the same host port.
 
 ## Private access through your domain
 
-The [private-domain guide](https://glidermcp.com/keep/setup) explains the supplied `remote/compose.yaml`.
+The [private-domain guide](https://glidermcp.com/docs/keep/setup) explains the supplied `remote/compose.yaml`.
 It uses Tailscale for network access and Caddy for your domain's HTTPS certificate.
 Cloudflare supplies DNS and certificate validation. The Compose file publishes no host ports and enables no Tailscale Funnel.
 
