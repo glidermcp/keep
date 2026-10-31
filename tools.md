@@ -2,8 +2,10 @@
 
 This technical reference is for MCP agents and client integrators.
 
-Keep 0.1.0-alpha.6 uses contract `1.0-draft.k5.4`, schema 7, and thirty-one tools.
-It includes [scoped access](#access-administration) and [record links](#record-links).
+Keep 0.1.0-alpha.7 uses contract `1.0-draft.k5.5`, schema 7, and twenty-eight tools.
+It includes [scoped access](#access-administration), [record links](#record-links), and [arrays of objects in collection schemas](#arrays-of-objects-in-collection-schemas).
+Principal and credential provisioning runs through the offline CLI or the [dedicated admin endpoint](#dedicated-admin-endpoint), not the document tool surface.
+Alpha.6 uses `1.0-draft.k5.4`, schema 7, and thirty-one tools, with provisioning as MCP tools.
 Alpha.5 uses `1.0-draft.k5.3`, schema 7, and twenty-nine tools.
 
 ## Setup
@@ -22,7 +24,7 @@ Run one Keep server on your computer.
 Connect all agents and sessions to it over HTTP.
 They share the same document store.
 
-For a persistent Docker service, use the [installation guide](https://glidermcp.com/keep/installation).
+For a persistent Docker service, use the [installation guide](https://glidermcp.com/docs/keep/installation).
 The steps below install the executable through npm or a native archive.
 
 Requires Node.js 24 or later for npm.
@@ -186,7 +188,8 @@ Deleting a newly created empty workspace does not make the store pristine again.
 
 ## Access administration
 
-Keep 0.1.0-alpha.5 uses contract `1.0-draft.k5.3` with scoped access and eight administration tools.
+Keep 0.1.0-alpha.7 contract `1.0-draft.k5.5` keeps five administration tools on the MCP surface: `list_principals`, `list_space_grants`, `list_credentials`, `list_audit_events`, and `put_space_grant`.
+Principal and credential provisioning is not callable over MCP; it runs through the [offline CLI](#provision-identities-and-credentials-from-the-cli) as the local owner, or online through the [dedicated admin endpoint](#dedicated-admin-endpoint). Alpha.5 and alpha.6 exposed all eight as MCP tools.
 Use the installed schemas before attempting this workflow. Personal stdio and the configured `KEEP_HTTP_TOKEN` retain full bootstrap-owner authority.
 Scoped credentials intersect enabled identity, current workspace membership, credential workspace IDs, operation scopes, expiry, and revocation.
 A credential scope alone grants no membership. A workspace owner is distinct from a store administrator.
@@ -197,7 +200,8 @@ A credential scope alone grants no membership. A workspace owner is distinct fro
 | Document, collection, and view writes; document deletion | `editor` or `owner`, with `write` |
 | Workspace metadata replacement, deletion, and grants | `owner`, with `manage` |
 | Workspace export | Workspace membership and explicit `export` |
-| Principal and credential administration, workspace creation, import, and audit | Administrator identity with `admin` |
+| Credential and audit lists, workspace creation, and import | Administrator identity with `admin` |
+| Principal and credential provisioning | Local owner through the offline CLI, or an `admin` credential on the dedicated admin endpoint; not on the document MCP surface |
 
 `reader`, `editor`, and `owner` are membership roles. Credential operations are `read`, `write`, `manage`, `export`, and `admin`.
 
@@ -222,8 +226,8 @@ Retrieval readiness reports the selected workspace state.
 Keep returns `not_found` for absent or inaccessible resources. A visible workspace can return `permission_denied` for an unauthorized operation.
 Do not infer resource existence from either response or automatically obtain broader credentials.
 
-Every operation rechecks current authority. After accepted revocation, subsequent operations fail, including calls through an existing connection.
-An operation already executing can finish before revocation commits.
+Every operation rechecks current authority against current state. A revocation through the dedicated admin endpoint applies to the live store. An offline CLI revocation applies once the server restarts, including against calls through a connection opened earlier.
+To cut off an agent while the server runs, set its space grant role to null with `put_space_grant`; the agent's next call for that workspace fails. An operation already executing can finish before a change commits.
 Restart preserves principals, memberships, credential digests, expiry, and revocation state.
 Cursors bind to the principal, credential, authorization revision, and existing query/snapshot state.
 After `cursor_expired`, repeat discovery or the original query without a cursor under current authority.
@@ -232,23 +236,20 @@ A historical receipt proves the earlier mutation; it does not restore content or
 
 ### Administration arguments
 
-Every mutation requires a UUID requestId and ifRevision. Use `absent` for creation and the current revision for replacement.
-`revoke_credential` requires the current revision. Read the appropriate list for revisions before changes.
+Every `put_space_grant` mutation requires a UUID requestId and ifRevision. Use `absent` for creation and the current revision for replacement.
+Read `list_space_grants` for the current revision before a change. CLI provisioning follows the same requestId and ifRevision discipline.
 
 | Tool | Additional required arguments | Optional arguments |
 | --- | --- | --- |
-| put_principal | principalId, definition | None |
 | put_space_grant | spaceId, principalId, role | None |
-| put_credential | credentialId, principalId, tokenSha256, spaceIds, operations, expiresAt | replacesCredentialId, ifReplacesRevision |
-| revoke_credential | credentialId | None |
 | list_principals | None | limit, cursor |
 | list_space_grants | spaceId | limit, cursor |
 | list_credentials | None | principalId, limit, cursor |
 | list_audit_events | None | limit, cursor |
 
-The principal definition requires name, kind (`human` or `agent`), enabled, and administrator. IDs are UUIDs.
 A grant role is `reader`, `editor`, `owner`, or null. Null revokes membership and retains its revision.
-Grant administration requires owner membership and manage scope. The other administration tools require store administration.
+Grant administration requires owner membership and manage scope; `put_space_grant` delegates a workspace share on the owner's behalf, so confirm it with the owner first.
+The list tools require store administration. An agent that calls a removed provisioning tool receives an explicit error naming the replacement CLI command.
 Lists accept limit 1–50, default 20, and return items, nextCursor, snapshotRevision, and exact coverage.
 Credential lists exclude secrets and digests. Audit pages retain the first page's upper bound.
 Mutation receipts contain target IDs, revision, disposition, and replayed.
@@ -258,23 +259,42 @@ After an ambiguous response, retain the original payload and requestId.
 An administration retry can return a historical receipt after later changes; inspect current metadata before relying on its state.
 Current authorization still applies. A denied retry does not justify broader credentials or a fresh mutation.
 
-### Register and rotate a scoped credential
+### Provision identities and credentials from the CLI
 
-For an authorized credential setup, the operator runs `keep --generate-credential` locally.
-It prints JSON with secret and tokenSha256 to operator stdout without opening a store.
+Principal and credential provisioning is a control-plane action and is not callable over MCP.
+Keep stores untrusted documents, and the owner's own trusted agent is prompt-injectable, so a stored document could otherwise coax that agent into minting access.
+Run these subcommands offline, as the local owner, with the server stopped. Each prints the same JSON receipt the former tool returned.
+
+```
+keep principal add --id <uuid> --name <text> --kind human|agent --administrator true|false [--enabled true|false] --request-id <uuid> [--data-dir <directory>]
+keep principal update --id <uuid> --name <text> --kind human|agent --administrator true|false [--enabled true|false] --if-revision <uuid> --request-id <uuid> [--data-dir <directory>]
+keep credential issue --id <uuid> --principal-id <uuid> --token-sha256 <64-hex> --expires-at <rfc3339> [--space-id <uuid> ...] [--operation read|write|manage|export|admin ...] [--if-revision absent|<uuid>] [--replaces-credential-id <uuid> --if-replaces-revision <uuid>] --request-id <uuid> [--data-dir <directory>]
+keep credential revoke --id <uuid> --if-revision <uuid> --request-id <uuid> [--data-dir <directory>]
+```
+
+`principal add` creates with `ifRevision: "absent"`; `principal update` replaces at the current revision, which also enables or disables an identity. `--enabled` defaults to true. The definition requires name, kind (`human` or `agent`), and administrator.
+
+For a credential secret, the operator first runs `keep --generate-credential` locally. It prints JSON with secret and tokenSha256 to operator stdout without opening a store.
 Keep this output outside chat, source control, documents, and logs. Store the secret in the client's secret storage.
-The digest covers the 64 ASCII lowercase hexadecimal secret characters, without the newline.
-Generation neither registers a credential nor grants authority. Send only tokenSha256 through `put_credential`; never send the secret through MCP.
-
-The administrator registers a new credential UUID, principalId, explicit spaceIds and operations, and a future expiresAt.
-Space IDs permit at most 128 unique UUIDs. Operations permit at most five unique values; there is no implicit wildcard.
+The digest covers the 64 ASCII lowercase hexadecimal secret characters, without the newline. Generation neither registers a credential nor grants authority.
+Pass only tokenSha256 to `keep credential issue`; never pass the raw secret. `credential issue` registers a new credential UUID, principalId, explicit spaceIds and operations, and a future expiresAt.
+Space IDs permit at most 128 unique UUIDs. Operations permit at most five unique values; there is no implicit wildcard. Omit `--space-id` and `--operation` for an unscoped credential.
 The client uses the secret as its Bearer token. The principal also needs current membership in each intended workspace.
 A credential ID keeps its original principal and digest. A revoked ID cannot become active again.
 
-Rotation registers a new credential ID with `ifRevision: "absent"`, replacesCredentialId, and the old credential's ifReplacesRevision.
+Rotation passes `--replaces-credential-id` and the old credential's `--if-replaces-revision` with a new credential ID and `--if-revision absent`.
 Insertion and revocation commit atomically. A stale rotation leaves the old credential valid.
-Read `list_credentials` again after a conflict and reconcile before a fresh rotation request.
-`--generate-token` and the configured owner token keep their existing behavior; scoped rotation does not rotate that owner token.
+Read `list_credentials` over MCP again after a conflict and reconcile before a fresh rotation.
+Every mutation requires a UUID `--request-id`; reuse the same `--id` and `--request-id` to replay a lost response. `--generate-token` and the configured owner token keep their existing behavior; scoped rotation does not rotate that owner token.
+
+### Dedicated admin endpoint
+
+Alpha.7 adds an optional access-administration endpoint. Start HTTP Keep with `--admin-port <number>`; the port must differ from `--port`.
+This endpoint serves only access administration and never document bodies.
+It accepts only an admin-scoped credential with the `admin` operation. It rejects the legacy `KEEP_HTTP_TOKEN`.
+A document-reading agent cannot reach it through the document endpoint.
+Provisioning, rotation, and revocation on this endpoint apply to the live store without a restart.
+Keep this port private. Expose it only to the operator, not through the document proxy.
 
 ### Audit and recovery
 
@@ -308,7 +328,7 @@ Existing scoped credentials retain their original space ID limits. Imported acto
 
 ## Record links
 
-These two read tools require Keep 0.1.0-alpha.6 and contract `1.0-draft.k5.4`.
+These two read tools require Keep 0.1.0-alpha.6 or later, with contract `1.0-draft.k5.4` or later.
 Alpha.5 has no record-link tools. Check `describe` and the installed schemas before use.
 
 | Tool | Required arguments | Optional arguments | Result |
@@ -346,6 +366,19 @@ They remain separate from the same-space relation objects in a document's `links
 A restart or complete stopped-store backup restoration preserves the store ID and link identity.
 A workspace import retains the destination store ID, even when it preserves workspace and document IDs. Generate new links in that destination.
 Alpha.5 and alpha.6 both use schema 7. This change requires no schema upgrade for an alpha.5 store.
+
+## Arrays of objects in collection schemas
+
+Alpha.7 lets a collection schema declare a field of type `array`. It holds an array of objects, such as the sets of one exercise.
+An array field requires `elementFields`, a list of scalar fields checked in every element. The list may be empty.
+An element field path is relative to one element, such as `/kg` or `/segment/kg`. It reads object members only.
+Element paths cannot contain decimal tokens, and element fields cannot be arrays. Arrays are one level deep.
+The array path plus the element path have at most 17 tokens. All declared fields, including element fields, count toward the 32-field limit.
+Strict validation reports element violations with concrete paths, such as `/data/sets/2/kg`. More than 1,000 elements report `element_limit`.
+
+This release adds the declaration and validation only. Filters, aggregates, and views do not yet select single elements.
+Keep per-element records in separate documents when a query must filter or sum individual elements.
+A declared aggregate measure path reads object members only; a decimal token never indexes an array.
 
 ## Document API
 

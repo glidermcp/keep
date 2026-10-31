@@ -100,7 +100,7 @@ class DistributionTests(unittest.TestCase):
 
         configuration = {"Architecture": "amd64", "Os": "linux", "Id": "synthetic-image",
                          "Config": {"User": "10001:10001"}}
-        for version, credential_probe in (("0.1.0-alpha.3", False), ("0.1.0-alpha.4", False), ("0.1.0-alpha.5", True), ("0.1.0-alpha.6", True)):
+        for version, credential_probe in (("0.1.0-alpha.3", False), ("0.1.0-alpha.4", False), ("0.1.0-alpha.5", True), ("0.1.0-alpha.6", True), ("0.1.0-alpha.7", True)):
             with self.subTest(version=version), patch.object(smoke, "approved", return_value=self.record), \
                     patch.object(smoke, "text", side_effect=[f"keep {version}", self.record["binarySha256"],
                                                              json.dumps([configuration])]), \

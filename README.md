@@ -18,10 +18,10 @@ To roll back, stop Keep.
 Restore the backup that you created before the upgrade.
 Then use the previous executable. That executable alone cannot reverse the upgrade.
 
-For Docker on an x64 computer, follow [Install with Docker](https://glidermcp.com/keep/installation).
+For Docker on an x64 computer, follow [Install with Docker](https://glidermcp.com/docs/keep/installation).
 The [Docker Hub image](https://hub.docker.com/r/sacrorum/keep) includes its Linux runtime.
 The Compose files provide persistent storage, a token file, and automatic restart.
-Use the [private-domain guide](https://glidermcp.com/keep/setup) for HTTPS access through Tailscale and Cloudflare DNS.
+Use the [private-domain guide](https://glidermcp.com/docs/keep/setup) for HTTPS access through Tailscale and Cloudflare DNS.
 
 For npm, install Node.js 24 or later and keep optional dependencies enabled:
 
