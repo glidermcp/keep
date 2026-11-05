@@ -2,8 +2,9 @@
 
 This technical reference is for MCP agents and client integrators.
 
-Keep 0.1.0-alpha.7 uses contract `1.0-draft.k5.5`, schema 7, and twenty-eight tools.
-It includes [scoped access](#access-administration), [record links](#record-links), and [arrays of objects in collection schemas](#arrays-of-objects-in-collection-schemas).
+Keep 0.1.0-alpha.8 uses contract `1.0-draft.k5.6`, schema 7, and twenty-eight tools.
+It includes [scoped access](#access-administration), [record links](#record-links), [arrays of objects in collection schemas](#arrays-of-objects-in-collection-schemas), and [element queries and totals](#element-queries-and-totals).
+Alpha.7 uses `1.0-draft.k5.5`, schema 7, and twenty-eight tools; it declares arrays of objects but cannot select or total single elements.
 Principal and credential provisioning runs through the offline CLI or the [dedicated admin endpoint](#dedicated-admin-endpoint), not the document tool surface.
 Alpha.6 uses `1.0-draft.k5.4`, schema 7, and thirty-one tools, with provisioning as MCP tools.
 Alpha.5 uses `1.0-draft.k5.3`, schema 7, and twenty-nine tools.
@@ -188,7 +189,7 @@ Deleting a newly created empty workspace does not make the store pristine again.
 
 ## Access administration
 
-Keep 0.1.0-alpha.7 contract `1.0-draft.k5.5` keeps five administration tools on the MCP surface: `list_principals`, `list_space_grants`, `list_credentials`, `list_audit_events`, and `put_space_grant`.
+Since contract `1.0-draft.k5.5` (alpha.7), Keep keeps five administration tools on the MCP surface: `list_principals`, `list_space_grants`, `list_credentials`, `list_audit_events`, and `put_space_grant`.
 Principal and credential provisioning is not callable over MCP; it runs through the [offline CLI](#provision-identities-and-credentials-from-the-cli) as the local owner, or online through the [dedicated admin endpoint](#dedicated-admin-endpoint). Alpha.5 and alpha.6 exposed all eight as MCP tools.
 Use the installed schemas before attempting this workflow. Personal stdio and the configured `KEEP_HTTP_TOKEN` retain full bootstrap-owner authority.
 Scoped credentials intersect enabled identity, current workspace membership, credential workspace IDs, operation scopes, expiry, and revocation.
@@ -376,9 +377,100 @@ Element paths cannot contain decimal tokens, and element fields cannot be arrays
 The array path plus the element path have at most 17 tokens. All declared fields, including element fields, count toward the 32-field limit.
 Strict validation reports element violations with concrete paths, such as `/data/sets/2/kg`. More than 1,000 elements report `element_limit`.
 
-This release adds the declaration and validation only. Filters, aggregates, and views do not yet select single elements.
-Keep per-element records in separate documents when a query must filter or sum individual elements.
+Alpha.7 adds the declaration and validation only. Its filters, aggregates, and views do not select single elements.
+On alpha.7, keep per-element records in separate documents when a query must filter or sum individual elements.
 A declared aggregate measure path reads object members only; a decimal token never indexes an array.
+Alpha.8 adds [element queries and totals](#element-queries-and-totals).
+
+<a id="element-queries-and-totals-unreleased"></a>
+
+## Element queries and totals
+
+Keep 0.1.0-alpha.8 contract `1.0-draft.k5.6` selects and totals single array elements. It adds no tools.
+Check `describe` for contract `1.0-draft.k5.6` or later and the installed schemas before you use these forms.
+
+A filter predicate with `op: "any"` matches a document when one element of the array satisfies every inner predicate.
+Use one `any` for conditions that must hold together, such as a working set at 20 kg:
+
+```json
+{"path":"/data/sets","op":"any","all":[
+  {"path":"/role","op":"eq","type":"string","value":"work"},
+  {"path":"/kg","op":"eq","type":"number","value":20}
+]}
+```
+
+Inner paths are relative to one element and name object members only. `any` takes 1 to 16 inner predicates.
+Nested `any` and `contains` are not allowed inside it. `any` works in `list_documents`, `search`, `aggregate_documents`, and saved views.
+A missing, null, empty, or non-array value does not match.
+
+`aggregate_documents` takes `elements` to total one declared array of objects:
+
+```json
+{
+  "spaceId":"11111111-1111-4111-8111-111111111111",
+  "collectionId":"33333333-3333-4333-8333-333333333333",
+  "elements":{"path":"/data/sets","filter":{"all":[{"path":"/role","op":"eq","type":"string","value":"work"}]}},
+  "measures":[
+    {"key":"sets","op":"count"},
+    {"key":"reps","op":"sum","elementPath":"/reps"},
+    {"key":"volume","op":"sum","elementPath":"/volumeKgReps"}
+  ],
+  "groupBy":[{"path":"/data/exerciseKey","type":"string"},{"path":"/data/weekStart","type":"date"}]
+}
+```
+
+`elements.filter` selects elements; the top-level `filter` still selects documents.
+Numeric measures take `elementPath`, a declared numeric element field. `count` counts selected elements.
+`groupBy` accepts one key or an array of up to three keys. A key reads a document `path` or, with `elements`, an `elementPath`.
+An array `groupBy` returns each group key as an array in the same order.
+The result and each group report `parentCount` and `elementCount`. `matchedCount` still counts the documents that match the filter.
+Missing, null, and empty arrays add no elements. Missing and null element values never become zero.
+A non-array value or an element that is not an object fails the request with the document ID and path.
+Each array may expand at most 1,000 elements and one request at most 100,000. Larger requests fail without partial totals.
+
+A saved view may store `any` predicates with its order, projection, cursor, and relative date.
+Order and relative dates read document paths, not element values.
+A view cannot store `elements`, `measures`, or `groupBy`. Run element totals with `aggregate_documents`.
+Alpha.7 and earlier cannot import a view that uses `any`.
+
+### Move per-row documents into an array
+
+Keep never rewrites stored workspaces itself. Move data with ordinary conditional writes and check parity before you delete anything.
+This synthetic example moves a workout `sets` collection with one document per set into one document per exercise in a session.
+
+Before, each set is a document:
+
+```json
+{"key":"s-2026-01-05-row-2","data":{"sessionKey":"2026-01-05-a","exerciseKey":"row","weekStart":"2026-01-05",
+  "setIndex":2,"role":"work","kg":20,"reps":10,"volumeKgReps":200}}
+```
+
+After, the sets of one exercise are one array:
+
+```json
+{"key":"2026-01-05-a-row","data":{"sessionKey":"2026-01-05-a","exerciseKey":"row","weekStart":"2026-01-05",
+  "sets":[
+    {"id":"s1","role":"warmup","kg":10,"reps":8,"volumeKgReps":80},
+    {"id":"s2","role":"work","kg":20,"reps":10,"volumeKgReps":200},
+    {"id":"s3","role":"work","kg":20,"reps":10,"volumeKgReps":200}
+  ]}}
+```
+
+1. Pause agents that write the old collection. Stop Keep, back up its complete store directory, and start it again.
+2. Create a new collection. Declare the parent fields and `/data/sets` as `type: "array"` with element fields for `id`, `role`, `kg`, `reps`, and `volumeKgReps`, including units.
+   Start in descriptive mode, then switch to strict after the copy validates.
+3. Read every old document with `list_documents` and its cursor. Group them by session and exercise, sort by set index, and give each set a stable `id`.
+4. Write each new document with `put_document`, `ifRevision: "absent"`, and a new `requestId`. Retain each payload and `requestId` until its receipt arrives.
+5. Read back each new document with `get_document` and compare it with its source sets.
+6. Check parity with `aggregate_documents` on both collections. Compare old totals, filtered by `role` and grouped by exercise and week,
+   with new totals using `elements` and the same grouping. Counts, `valueCount`, and every decimal string must match.
+   The new `elementCount` must equal the old `matchedCount`.
+7. Rewrite saved views. A set-level filter, such as `role = work AND kg >= 20`, becomes one `any` predicate.
+   A view lists exercises, not sets; use `aggregate_documents` with `elements` for set counts and volumes.
+8. Archive or delete the old collection only after the parity checks pass and agents use the new collection.
+
+Existing scalar requests, documents, and views continue to work during the move.
+Precompute a nested drop-set volume on its set. Element totals do not expand nested arrays, so segments cannot count a set twice.
 
 ## Document API
 
